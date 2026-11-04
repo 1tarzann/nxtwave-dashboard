@@ -1,0 +1,9 @@
+{
+  "id": "nxtwave-dashboard",
+  "name": "NXTWAVE Dashboard",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Partner dashboard: color-coded product squares, 3-level drill-down and one-click sprint actions.",
+  "author": "NXTWAVE",
+  "isDesktopOnly": false
+}
