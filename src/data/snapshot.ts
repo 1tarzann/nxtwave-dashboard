@@ -1,7 +1,7 @@
 // Turns the 6 raw sprint docs into one ProductSnapshot. Pure: no Obsidian, no clock.
 
 import { laterDate, normalizeDate, toIsoDate } from "./dates";
-import { cell, col, countCheckboxes, isChecked, num, plainText, section, tableIn } from "./markdown";
+import { cell, checklistLines, col, countCheckboxes, isChecked, num, plainText, section, tableIn } from "./markdown";
 import {
   ChangelogEntry,
   LinkRef,
@@ -69,10 +69,12 @@ function parseLedger(body: string): LedgerRow[] | null {
     revenue: col(t, "revenue"),
   };
   const rows: LedgerRow[] = [];
+  const numCols = [c.spend, c.impressions, c.clicks, c.signups, c.sales, c.revenue];
   for (const r of t.rows) {
     const day = num(cell(r, c.day));
     if (day === null) continue; // skips the Total row
     rows.push({
+      filled: numCols.some((i) => cell(r, i) !== ""),
       day,
       date: cell(r, c.date),
       spend: num(cell(r, c.spend)) ?? 0,
@@ -116,6 +118,15 @@ export function parseLink(v: unknown): LinkRef | null {
 }
 
 export const displayName = (folderName: string) => folderName.replace(/_/g, " ");
+
+/** Day-28 vote table: the row whose label mentions "vote", one column per partner. */
+function parseVotes(body: string): { dev: string; marketing: string } {
+  const t = tableIn(body, "verdict");
+  if (!t) return { dev: "", marketing: "" };
+  const row = t.rows.find((r) => (r[0] ?? "").toLowerCase().includes("vote"));
+  if (!row) return { dev: "", marketing: "" };
+  return { dev: cell(row, col(t, "developer", "dev")), marketing: cell(row, col(t, "marketer", "marketing")) };
+}
 
 export function buildSnapshot(name: string, folder: string, docs: Partial<Record<DocKey, RawDoc>>, hub?: RawDoc | null): ProductSnapshot {
   const warnings: string[] = [];
@@ -225,7 +236,9 @@ export function buildSnapshot(name: string, folder: string, docs: Partial<Record
       tiktok: str(fm("marketing").tiktok),
       instagram: str(fm("marketing").instagram),
       youtube: str(fm("marketing").youtube),
+      x: str(fm("marketing").x ?? fm("marketing").twitter),
     },
+    hasXField: "x" in fm("marketing") || "twitter" in fm("marketing"),
     lastSocialPostDate: normalizeDate(fm("marketing").last_social_post_date),
     marketingTouched,
     lastChangelogDate: normalizeDate(fm("changelog").last_changelog_date),
@@ -245,6 +258,8 @@ export function buildSnapshot(name: string, folder: string, docs: Partial<Record
     backlog,
     brandKit,
     launchChecks: countCheckboxes(body("launch")),
+    launchItems: checklistLines(body("launch")).filter((l) => l.indent === 0).map((l) => ({ text: l.text, checked: l.checked })),
+    votes: parseVotes(body("analytics")),
     signedOffDev: bool(fm("launch").signed_off_dev),
     signedOffMarketing: bool(fm("launch").signed_off_marketing),
     blockingIssuesOpen: numFm(fm("audit").blocking_issues_open),
@@ -254,7 +269,7 @@ export function buildSnapshot(name: string, folder: string, docs: Partial<Record
 }
 
 export function computeTotals(p: ProductSnapshot): Totals {
-  const sum = (k: keyof Omit<typeof p.ledger[number], "date">) => p.ledger.reduce((a, r) => a + (r[k] as number), 0);
+  const sum = (k: "spend" | "impressions" | "clicks" | "signups" | "sales" | "revenue") => p.ledger.reduce((a, r) => a + r[k], 0);
   const ledgerSpend = sum("spend");
   const ledgerRevenue = sum("revenue");
   const impressions = sum("impressions");

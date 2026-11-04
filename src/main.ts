@@ -1,7 +1,7 @@
 import { App, debounce, ItemView, Plugin, PluginSettingTab, Setting, TAbstractFile, WorkspaceLeaf } from "obsidian";
 import { applyMotionMode, MotionMode } from "./ui/motion";
 import { toIsoDate } from "./data/dates";
-import { DashboardData } from "./data/types";
+import { DashboardData, Role } from "./data/types";
 import { ObsidianHost } from "./obsidian/host";
 import { findHqRoot, readDashboard } from "./obsidian/reader";
 import { DashboardApp } from "./ui/app";
@@ -32,7 +32,12 @@ class DashboardView extends ItemView {
   async onOpen() {
     this.contentEl.empty();
     this.contentEl.addClass("nx-view-content");
-    const host = new ObsidianHost(this.app, this.plugin.manifest.version, () => this.data, () => this.leaf);
+    const s = this.plugin.settings;
+    const prefs = { role: s.role, guideSeen: s.guideSeen };
+    const host = new ObsidianHost(this.app, this.plugin.manifest.version, () => this.data, () => this.leaf, prefs, async (p) => {
+      Object.assign(this.plugin.settings, p);
+      await this.plugin.saveData(this.plugin.settings);
+    });
     this.dash = new DashboardApp(this.contentEl, host);
 
     const reload = debounce(() => void this.reload(), 250, true);
@@ -71,6 +76,11 @@ class DashboardView extends ItemView {
     this.dash.setData(this.data);
   }
 
+  async rebuild() {
+    await this.onClose();
+    await this.onOpen();
+  }
+
   focusDashboard() {
     this.dash?.focus();
   }
@@ -83,8 +93,10 @@ class DashboardView extends ItemView {
 
 interface Settings {
   motion: MotionMode;
+  role: Role;
+  guideSeen: boolean;
 }
-const DEFAULTS: Settings = { motion: "system" };
+const DEFAULTS: Settings = { motion: "system", role: "both", guideSeen: false };
 
 class DashboardSettingTab extends PluginSettingTab {
   constructor(app: App, private plugin: NxtwaveDashboard) {
@@ -93,6 +105,28 @@ class DashboardSettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
+    new Setting(containerEl)
+      .setName("Who uses this device?")
+      .setDesc("The quest log shows this person's quests first. Each partner sets it on their own computer.")
+      .addDropdown((d) =>
+        d
+          .addOptions({ both: "Both / not sure", dev: "Developer", marketing: "Marketer" })
+          .setValue(this.plugin.settings.role)
+          .onChange(async (v) => {
+            this.plugin.settings.role = v as Role;
+            await this.plugin.saveData(this.plugin.settings);
+            this.plugin.refreshViews();
+          }),
+      );
+    new Setting(containerEl)
+      .setName("Show the “How to read this page” card again")
+      .addButton((b) =>
+        b.setButtonText("Show it").onClick(async () => {
+          this.plugin.settings.guideSeen = false;
+          await this.plugin.saveData(this.plugin.settings);
+          this.plugin.refreshViews();
+        }),
+      );
     new Setting(containerEl)
       .setName("Animations")
       .setDesc("Hover lifts, the square-to-hub zoom, count-ups and pulses. With reduced motion, check marks, toasts and colors still show, just without movement. This setting is per device.")
@@ -112,6 +146,11 @@ class DashboardSettingTab extends PluginSettingTab {
 export default class NxtwaveDashboard extends Plugin {
   settings: Settings = { ...DEFAULTS };
   private stopMotion: () => void = () => undefined;
+
+  /** Re-open dashboards so a settings change (role, guide card) shows right away. */
+  refreshViews() {
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) void (leaf.view as DashboardView).rebuild();
+  }
 
   applyMotion() {
     this.stopMotion();

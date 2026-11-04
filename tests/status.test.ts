@@ -8,7 +8,7 @@ import { product } from "./helpers";
 const START = "2026-11-01";
 const dayN = (n: number) => addDays(START, n - 1);
 const th = DEFAULT_THRESHOLDS;
-const row = (day: number, r: Partial<LedgerRow>): LedgerRow => ({ day, date: "", spend: 0, impressions: 0, clicks: 0, signups: 0, sales: 0, revenue: 0, ...r });
+const row = (day: number, r: Partial<LedgerRow>): LedgerRow => ({ day, date: "", spend: 0, impressions: 0, clicks: 0, signups: 0, sales: 0, revenue: 0, filled: true, ...r });
 
 describe("grey states", () => {
   it("queued", () => {
@@ -32,25 +32,25 @@ describe("build phase (days 1–14)", () => {
   it("day 3 still healthy (2 quiet days) with a stale-tomorrow warning", () => {
     const s = computeStatus(product({ marketingTouched: dayN(3) }), th, dayN(3));
     expect(s.key).toBe("healthy");
-    expect(s.info).toEqual(["Stale tomorrow without a changelog entry"]);
-    expect(s.reason).toBe("Changelog none yet · marketing edited today");
+    expect(s.info).toEqual(["Goes quiet tomorrow without a Changelog entry"]);
+    expect(s.reason).toBe("Progress logged not yet · marketing edited today");
   });
   it("stale after 3 days with no changelog entry", () => {
     const s = computeStatus(product({ marketingTouched: dayN(4) }), th, dayN(4));
     expect(s.key).toBe("stale");
-    expect(s.reason).toBe("No changelog entry in 3 days");
+    expect(s.reason).toBe("No progress logged in the Changelog for 3 days");
     expect(s.action?.doc).toBe("changelog");
   });
   it("stale when the marketing file is untouched for 3 days", () => {
     const s = computeStatus(product({ lastChangelogDate: dayN(6), marketingTouched: dayN(3) }), th, dayN(6));
     expect(s.key).toBe("stale");
-    expect(s.reason).toBe("Marketing file untouched for 3 days");
+    expect(s.reason).toBe("Marketing notes untouched for 3 days");
     expect(s.action?.doc).toBe("marketing");
   });
   it("both quiet: the longer one leads, the other is an info line", () => {
     const s = computeStatus(product({ lastChangelogDate: dayN(2), marketingTouched: dayN(4) }), th, dayN(8));
-    expect(s.reason).toBe("No changelog entry in 6 days");
-    expect(s.info).toEqual(["Marketing file untouched for 4 days"]);
+    expect(s.reason).toBe("No progress logged in the Changelog for 6 days");
+    expect(s.info).toEqual(["Marketing notes untouched for 4 days"]);
   });
   it("social posts don't matter before launch", () => {
     const s = computeStatus(product({ lastChangelogDate: dayN(9), marketingTouched: dayN(9) }), th, dayN(10));
@@ -71,7 +71,7 @@ describe("gates", () => {
   });
   it("overdue verdict after day 28 stays amber", () => {
     const s = computeStatus(product({ status: "watching", lastSocialPostDate: dayN(30) }), th, dayN(30));
-    expect(s.label).toBe("GATE OVERDUE");
+    expect(s.label).toBe("DECISION OVERDUE");
   });
   it("extended sprints gate on day 35, not 28-overdue", () => {
     const p = product({ status: "extended", lastSocialPostDate: dayN(31) });
@@ -97,13 +97,13 @@ describe("watch phase (days 15–28)", () => {
   it("quiet developer is info only by default", () => {
     const s = computeStatus(product({ status: "watching", lastSocialPostDate: dayN(20), lastChangelogDate: dayN(14) }), th, dayN(20));
     expect(s.key).toBe("healthy");
-    expect(s.info).toEqual(["Dev quiet 6d"]);
+    expect(s.info).toEqual(["Developer quiet 6 days (normal after launch: bug fixes only)"]);
   });
   it("quiet developer turns stale when partners enable it", () => {
     const t = { ...th, staleDevAfterLaunchDays: 5 };
     const s = computeStatus(product({ status: "watching", lastSocialPostDate: dayN(20), lastChangelogDate: dayN(14) }), t, dayN(20));
     expect(s.key).toBe("stale");
-    expect(s.reason).toBe("No dev activity in 6 days");
+    expect(s.reason).toBe("No developer progress logged for 6 days");
   });
 });
 
@@ -129,7 +129,7 @@ describe("kill signal", () => {
     expect(computeStatus(p, th, dayN(22)).key).toBe("healthy");
     const s = computeStatus(p, { ...th, killMinCtr: 0.8 }, dayN(22));
     expect(s.key).toBe("kill");
-    expect(s.reason).toBe("Click rate 0.10% (minimum 0.8%)");
+    expect(s.reason).toBe("Only 0.10% of people who saw the ad clicked (your minimum is 0.8%)");
   });
   it("verdict: kill beats everything", () => {
     expect(computeStatus(product({ verdict: "kill" }), th, dayN(14)).key).toBe("kill");
@@ -156,6 +156,8 @@ describe("do this next", () => {
     const data = {
       hqRoot: "HQ",
       categories: [],
+      setup: [],
+      businessModel: [],
       today,
       thresholds: th,
       archive: { scaled: [], killed: [] },

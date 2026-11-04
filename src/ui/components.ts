@@ -1,8 +1,64 @@
 // Small building blocks shared by every screen.
 
 import { longDate, relativeDay } from "../data/dates";
+import { FieldId, FIELDS, SourceTag } from "../data/fields";
 import { StatusResult } from "../data/types";
+import type { Ctx } from "./app";
 import { Child, h, s } from "./dom";
+import { enter } from "./motion";
+
+/**
+ * A section title with an ⓘ button. The ⓘ opens a small card underneath: what it is, why it's here,
+ * where it comes from, who fills it. Open/closed is remembered while the dashboard is open.
+ */
+export function sectionHead(ctx: Ctx, id: FieldId, title?: string, extra?: Child): HTMLElement {
+  const f = FIELDS[id];
+  const wrap = h("div", { class: "nx-head-wrap" });
+  const btn = h("button", { class: "nx-info-btn nx-pressable", type: "button", "aria-label": `What is “${f.label}”?`, "aria-expanded": "false", title: "What is this?" }, "ⓘ");
+  const head = h("div", { class: "nx-head" }, h("h3", { class: "nx-section-title" }, title ?? f.label), btn, extra ? h("span", { class: "nx-head-extra" }, extra) : null);
+  wrap.append(head);
+  const key = `info:${id}`;
+  const card = () =>
+    h(
+      "dl",
+      { class: "nx-info-card" },
+      h("div", null, h("dt", null, "What it is"), h("dd", null, f.what)),
+      h("div", null, h("dt", null, "Why it's here"), h("dd", null, f.why)),
+      h("div", null, h("dt", null, "Where it comes from"), h("dd", null, f.where)),
+      h("div", null, h("dt", null, "Who fills it"), h("dd", null, f.who)),
+    );
+  if (ctx.mem.drawers.has(key)) {
+    wrap.append(card());
+    btn.setAttribute("aria-expanded", "true");
+    btn.classList.add("is-on");
+  }
+  btn.addEventListener("click", () => {
+    const existing = wrap.querySelector(".nx-info-card");
+    if (existing) {
+      existing.remove();
+      ctx.mem.drawers.delete(key);
+      btn.setAttribute("aria-expanded", "false");
+      btn.classList.remove("is-on");
+    } else {
+      const c = card();
+      wrap.append(c);
+      enter(c);
+      ctx.mem.drawers.add(key);
+      btn.setAttribute("aria-expanded", "true");
+      btn.classList.add("is-on");
+    }
+  });
+  return wrap;
+}
+
+export function infoSection(ctx: Ctx, id: FieldId, title: string | undefined, ...children: Child[]): HTMLElement {
+  return h("section", { class: "nx-section" }, sectionHead(ctx, id, title), ...children);
+}
+
+/** "⏳ Not yet · starts day 15", "✍️ Needs you · Marketing: …", "🔌 Auto · Stripe". */
+export function sourceLine(tag: SourceTag): HTMLElement {
+  return h("span", { class: ["nx-source", `is-${tag.kind}`] }, tag.text);
+}
 
 export function statusChip(st: StatusResult, size: "sm" | "md" = "md"): HTMLElement {
   return h(

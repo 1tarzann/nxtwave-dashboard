@@ -1,13 +1,25 @@
-// Levels 2 and 3: the product hub (Overview) and the Marketing / Dev sides.
+// Levels 2 and 3: one product's Overview, and its Marketing and Developer sides.
 
 import { addDays, longDate } from "../data/dates";
+import { FIELDS, Metric, sourceTag } from "../data/fields";
+import { sprintQuests } from "../data/quests";
 import { fmtMoney } from "../data/status";
 import { DocKey, ProductSnapshot, SPEND_CAP } from "../data/types";
 import { Ctx, Tab } from "./app";
-import { count, drawer, emptyNote, money, moneyExact, rel, section } from "./components";
+import { count, drawer, emptyNote, infoSection, money, moneyExact, rel, sectionHead, sourceLine } from "./components";
 import { h, s } from "./dom";
 import { replayClass } from "./motion";
+import { questLog } from "./quests";
 import { connectSheet } from "./sheets";
+
+const NOTE_NAMES: Record<DocKey, string> = {
+  spec: "Dev Spec",
+  marketing: "Marketing Engine",
+  analytics: "Analytics and Gate",
+  launch: "Launch Checklist",
+  changelog: "Changelog",
+  audit: "Red-Team Audit",
+};
 
 export function renderProduct(ctx: Ctx, p: ProductSnapshot, tab: Tab): HTMLElement {
   const body = h("div", { class: "nx-product" });
@@ -26,7 +38,11 @@ function openLink(ctx: Ctx, p: ProductSnapshot, doc: DocKey, label: string, head
   return b;
 }
 
-// ── Overview (the hub) ─────────────────────────────────────────────────────
+function quests(ctx: Ctx, p: ProductSnapshot) {
+  return sprintQuests(p, ctx.status(p), ctx.today);
+}
+
+// ── Overview ───────────────────────────────────────────────────────────────
 
 function overview(ctx: Ctx, p: ProductSnapshot): HTMLElement[] {
   const st = ctx.status(p);
@@ -46,86 +62,118 @@ function overview(ctx: Ctx, p: ProductSnapshot): HTMLElement[] {
   );
   const notes: HTMLElement[] = [];
   st.info.forEach((i) => notes.push(h("span", { class: "nx-info-chip" }, i)));
-  if (p.outOfSync) notes.push(h("span", { class: "nx-warn-chip" }, "⚠ The hub and the 6 files disagree on sprint_status or cycle_start"));
+  if (p.outOfSync) notes.push(h("span", { class: "nx-warn-chip" }, "⚠ The hub note and the 6 notes disagree on the status or Day 1. The hub note is the official one."));
   p.warnings.forEach((w) => notes.push(h("span", { class: "nx-warn-chip" }, `⚠ ${w}`)));
-  if (t.totalsMismatch) notes.push(h("span", { class: "nx-warn-chip", title: "Using the larger number" }, "⚠ total_spend / total_revenue don't match the ledger sum"));
+  if (t.totalsMismatch) notes.push(h("span", { class: "nx-warn-chip", title: "The dashboard shows the larger number" }, "⚠ The totals at the top of Analytics don't match the Daily numbers table"));
   if (notes.length) out.push(h("div", { class: "nx-chips-row" }, notes));
 
-  // 2. Activity pulse.
+  // 2. This product's quests.
+  out.push(
+    questLog(ctx, {
+      id: `sprint:${p.name}`,
+      field: "questLog",
+      title: `${p.displayName} quests`,
+      quests: quests(ctx, p),
+      product: p,
+      emptyText: p.status.toLowerCase() === "queued" ? "Quests appear when this product's sprint starts." : "No quests for this filter.",
+      max: 3,
+    }),
+  );
+
+  // 3. Latest activity.
   const latest = p.changelog[0];
   const devLine = latest ? latest.added[0] ?? latest.fixed[0] ?? latest.removed[0] ?? "" : "";
-  const handles = [p.handles.tiktok, p.handles.instagram, p.handles.youtube].filter(Boolean);
+  const handles = [p.handles.tiktok, p.handles.instagram, p.handles.youtube, p.handles.x].filter(Boolean);
+  const postTag = sourceTag("lastPost", p, st);
   out.push(
     h(
-      "div",
-      { class: "nx-pulse-row" },
+      "section",
+      { class: "nx-section" },
+      sectionHead(ctx, "activity"),
       h(
         "div",
-        { class: ["nx-card", "nx-pulse-card", ctx.flashCls(`${p.name}:post`)] },
-        h("span", { class: "nx-card-label" }, "📣 Last social post"),
-        h("span", { class: "nx-pulse-big" }, (st.day ?? 0) < 15 && !p.lastSocialPostDate ? "Not live yet" : rel(p.lastSocialPostDate, today)),
-        h("span", { class: "nx-muted" }, handles.length ? handles.join(" · ") : (st.day ?? 0) < 15 ? "Content goes live on day 14" : "No handles connected"),
-        ctx.button({ id: `pulse:${p.name}:posted`, label: "Posted today", doneLabel: "Logged", variant: "quiet", onClick: async () => { const u = await ctx.host.postedToday(p); ctx.mem.flash.set(`${p.name}:post`, Date.now() + 1300); return u; } }),
-      ),
-      h(
-        "div",
-        { class: "nx-card nx-pulse-card" },
-        h("span", { class: "nx-card-label" }, "🛠 Last dev update"),
-        h("span", { class: "nx-pulse-big" }, rel(p.lastChangelogDate, today)),
-        h("span", { class: "nx-muted" }, p.lastChangelogDate ? `v${p.currentVersion}${devLine ? ` · ${devLine}` : ""}` : "No changelog entry yet"),
-        openLink(ctx, p, "changelog", "Open changelog →"),
+        { class: "nx-pulse-row" },
+        h(
+          "div",
+          { class: ["nx-card", "nx-pulse-card", ctx.flashCls(`${p.name}:post`)] },
+          h("span", { class: "nx-card-label" }, "📣 Last social post"),
+          h("span", { class: "nx-pulse-big" }, postTag.kind === "notyet" ? "Not live yet" : rel(p.lastSocialPostDate, today, "None yet")),
+          h("span", { class: "nx-muted" }, handles.length ? handles.join(" · ") : "No accounts linked yet"),
+          sourceLine(postTag),
+          ctx.button({ id: `pulse:${p.name}:posted`, label: "I posted today", doneLabel: "Logged", variant: "quiet", title: "Records today's date as the last post", onClick: async () => { const u = await ctx.host.postedToday(p); ctx.mem.flash.set(`${p.name}:post`, Date.now() + 1300); return u; } }),
+        ),
+        h(
+          "div",
+          { class: "nx-card nx-pulse-card" },
+          h("span", { class: "nx-card-label" }, "🛠 Last progress log (Changelog)"),
+          h("span", { class: "nx-pulse-big" }, rel(p.lastChangelogDate, today, "None yet")),
+          h("span", { class: "nx-muted" }, p.lastChangelogDate ? `Version ${p.currentVersion}${devLine ? ` · ${devLine}` : ""}` : "The developer (or Claude as Developer) adds an entry after each work session."),
+          openLink(ctx, p, "changelog", "Open Changelog →"),
+        ),
       ),
     ),
   );
 
-  // 3. Money + funnel boxes.
+  // 4. Money and reach, each with where the number comes from.
   const todayRow = p.ledger.find((r) => r.date === today || r.day === st.day);
   const capPct = Math.min(1, t.spend / SPEND_CAP);
+  const value = (m: Metric, key: string, v: number, fmt: (n: number) => string) => {
+    const tag = sourceTag(m, p, st);
+    const shown = tag.kind === "notyet" || tag.kind === "youfill" ? h("span", { class: "nx-tile-value is-empty" }, "—") : ctx.num(`${p.name}:${key}`, v, fmt, "nx-tile-value");
+    return { shown, tag: sourceLine(tag) };
+  };
+  const spend = value("spend", "spend", t.spend, money);
+  const views = value("views", "views", t.views, count);
+  const clicks = value("clicks", "clicks", t.clicks, count);
+  const revenue = value("revenue", "revenue", t.revenue, money);
   out.push(
     h(
-      "div",
-      { class: "nx-tiles" },
-      tile(
-        "Ad spend",
-        ctx.num(`${p.name}:spend`, t.spend, money, "nx-tile-value"),
-        h("div", { class: "nx-cap" }, h("div", { class: ["nx-cap-fill", capPct >= 1 && "is-full"], style: { transform: `scaleX(${capPct})` } })),
-        h("span", { class: "nx-muted" }, capPct >= 1 ? `At the $${SPEND_CAP} cap: stop paid` : `of $${SPEND_CAP} cap`),
-        todayRow?.spend ? h("span", { class: "nx-delta" }, `+${moneyExact(todayRow.spend)} today`) : null,
-      ),
-      tile("Views", ctx.num(`${p.name}:views`, t.views, count, "nx-tile-value"), h("span", { class: "nx-muted" }, "organic, all platforms")),
-      tile(
-        "Clicks",
-        ctx.num(`${p.name}:clicks`, t.clicks, count, "nx-tile-value"),
-        h("span", { class: "nx-muted" }, t.ctr === null ? "click rate: no impressions yet" : `click rate ${t.ctr.toFixed(2)}%`),
-      ),
-      tile(
-        "Revenue",
-        ctx.num(`${p.name}:revenue`, t.revenue, money, "nx-tile-value"),
-        h("span", { class: "nx-muted" }, `${t.sales} sale${t.sales === 1 ? "" : "s"} · ${t.signups} sign-up${t.signups === 1 ? "" : "s"}`),
-        todayRow?.revenue ? h("span", { class: "nx-delta is-good" }, `+${moneyExact(todayRow.revenue)} today`) : null,
+      "section",
+      { class: "nx-section" },
+      sectionHead(ctx, "money"),
+      h(
+        "div",
+        { class: "nx-tiles" },
+        tile(
+          "Ad spend",
+          spend.shown,
+          h("div", { class: "nx-cap" }, h("div", { class: ["nx-cap-fill", capPct >= 1 && "is-full"], style: { transform: `scaleX(${capPct})` } })),
+          h("span", { class: "nx-muted" }, capPct >= 1 ? `At the $${SPEND_CAP} limit: stop paid ads` : `of the $${SPEND_CAP} test budget`),
+          todayRow?.spend ? h("span", { class: "nx-delta" }, `+${moneyExact(todayRow.spend)} today`) : null,
+          spend.tag,
+        ),
+        tile("Views", views.shown, h("span", { class: "nx-muted" }, "free posts, all apps"), views.tag),
+        tile("Clicks", clicks.shown, h("span", { class: "nx-muted" }, t.ctr === null ? "click rate shows once ads run" : `${t.ctr.toFixed(2)}% of people who saw the ad clicked`), clicks.tag),
+        tile(
+          "Revenue",
+          revenue.shown,
+          h("span", { class: "nx-muted" }, `${t.sales} sale${t.sales === 1 ? "" : "s"} · ${t.signups} sign-up${t.signups === 1 ? "" : "s"}`),
+          todayRow?.revenue ? h("span", { class: "nx-delta is-good" }, `+${moneyExact(todayRow.revenue)} today`) : null,
+          revenue.tag,
+        ),
       ),
     ),
   );
 
-  // 4. Gate timeline.
-  out.push(section("Timeline", timeline(p, st.day, st.totalDays)));
+  // 5. Timeline.
+  out.push(infoSection(ctx, "timeline", undefined, timeline(p, st.day, st.totalDays)));
 
-  // 5. Connection pills.
-  out.push(section("Connections", connections(ctx, p, st.day)));
+  // 6. Linked accounts.
+  out.push(infoSection(ctx, "linked", undefined, connections(ctx, p, st.day)));
 
-  // 6. Social stats drawer.
+  // 7. Free social stats.
   const drawerId = `social:${p.name}`;
   out.push(
     drawer({
       id: drawerId,
       open: ctx.mem.drawers.has(drawerId),
       onToggle: (o) => (o ? ctx.mem.drawers.add(drawerId) : ctx.mem.drawers.delete(drawerId)),
-      label: h("span", null, "Expand social stats"),
+      label: h("span", null, "📊 Free social stats ", h("span", { class: "nx-muted" }, "followers, views and best video per app")),
       body: () => organicTable(ctx, p),
     }),
   );
 
-  // 7. The two doors.
+  // 8. The two doors.
   const door = (tab: Tab, icon: string, title: string, sub: string) => {
     const b = h("button", { class: "nx-door nx-pressable", type: "button" }, h("span", { class: "nx-door-icon", "aria-hidden": "true" }, icon), h("span", { class: "nx-door-title" }, `${title} →`), h("span", { class: "nx-muted" }, sub));
     b.addEventListener("click", () => ctx.go({ level: "product", name: p.name, tab }));
@@ -133,7 +181,7 @@ function overview(ctx: Ctx, p: ProductSnapshot): HTMLElement[] {
   };
   const hubLink = p.hubPath
     ? (() => {
-        const b = h("button", { class: "nx-link", type: "button" }, `Open ${p.displayName} hub note →`);
+        const b = h("button", { class: "nx-link", type: "button", title: "The table of contents for this product. It holds the official status and Day 1." }, `Open ${p.displayName}'s hub note →`);
         b.addEventListener("click", () => ctx.host.openPath(p.hubPath as string));
         return b;
       })()
@@ -142,8 +190,8 @@ function overview(ctx: Ctx, p: ProductSnapshot): HTMLElement[] {
     h(
       "div",
       { class: "nx-doors" },
-      door("marketing", "📈", "Open Marketing Side", "Swipe, hooks, backlog, ledger"),
-      door("dev", "💻", "Open Developer Side", "Spec, changelog, launch readiness"),
+      door("marketing", "📈", "Marketing side", "Competitor examples, video lines, content schedule, daily numbers"),
+      door("dev", "💻", "Developer side", "The 3 core features, progress log, ready-to-launch checks"),
     ),
     h("div", { class: "nx-footer-links" }, hubLink, p.category ? h("span", { class: "nx-muted" }, `Category: ${p.category.title}`) : null),
   );
@@ -157,10 +205,10 @@ function tile(label: string, value: HTMLElement, ...rest: (HTMLElement | null)[]
 function timeline(p: ProductSnapshot, day: number | null, total: number): HTMLElement {
   const marks = [
     { d: 1, label: "Day 1" },
-    { d: 14, label: "Launch gate" },
+    { d: 14, label: "Launch day" },
     { d: 21, label: "Kill check" },
-    { d: 28, label: "Verdict" },
-    ...(total > 28 ? [{ d: 35, label: "Extension ends" }] : []),
+    { d: 28, label: "Decision day" },
+    ...(total > 28 ? [{ d: 35, label: "Extra week ends" }] : []),
   ];
   const pos = (d: number) => `${((d - 1) / (total - 1)) * 100}%`;
   const track = h("div", { class: "nx-timeline" }, h("div", { class: "nx-tl-line" }));
@@ -180,15 +228,17 @@ function timeline(p: ProductSnapshot, day: number | null, total: number): HTMLEl
   if (day !== null && day >= 1 && day <= total) {
     track.append(h("div", { class: "nx-tl-today", style: { left: pos(day) } }, h("span", null, `Today · day ${day}`)));
   }
-  return track;
+  const wrap = h("div", null, track);
+  if (day === null) wrap.append(h("p", { class: "nx-muted" }, "The dates appear once Day 1 is set."));
+  return wrap;
 }
 
 function connections(ctx: Ctx, p: ProductSnapshot, day: number | null): HTMLElement {
   const row = h("div", { class: "nx-pills" });
-  const handle = (label: string, key: "tiktok" | "instagram" | "youtube") => {
+  const handle = (label: string, key: "tiktok" | "instagram" | "youtube" | "x") => {
     const v = p.handles[key];
     if (v) {
-      const pill = h("button", { class: "nx-pill is-on nx-pressable", type: "button", title: "Click to copy" }, h("span", { class: "nx-dot is-on" }), `${label} ${v}`);
+      const pill = h("button", { class: "nx-pill is-on nx-pressable", type: "button", title: "Click to copy the handle" }, h("span", { class: "nx-dot is-on" }), `${label} ${v}`);
       pill.addEventListener("click", async () => {
         await ctx.host.copy(v);
         pill.setAttribute("data-tip", "Copied");
@@ -196,24 +246,24 @@ function connections(ctx: Ctx, p: ProductSnapshot, day: number | null): HTMLElem
       });
       return pill;
     }
-    const pill = h("button", { class: "nx-pill nx-pressable", type: "button" }, h("span", { class: "nx-dot" }), `+ Connect ${label}`);
+    const pill = h("button", { class: "nx-pill nx-pressable", type: "button", title: `Paste the ${label} handle once the account exists` }, h("span", { class: "nx-dot" }), `+ Add ${label} handle`);
     pill.addEventListener("click", () => connectSheet(ctx, p, "marketing", key, `${label} handle`, "@handle"));
     return pill;
   };
   row.append(handle("TikTok", "tiktok"), handle("Instagram", "instagram"), handle("YouTube", "youtube"));
+  if (p.hasXField) row.append(handle("X", "x"));
 
-  if (p.stripeLink) {
-    const pill = h("button", { class: "nx-pill is-on nx-pressable", type: "button", title: p.stripeLink }, h("span", { class: "nx-dot is-on" }), "Stripe link");
-    pill.addEventListener("click", () => ctx.openDoc(p, "marketing", "Brand kit"));
-    row.append(pill);
-  } else {
-    const pill = h("button", { class: "nx-pill nx-pressable", type: "button", title: "Add it in the Brand kit table" }, h("span", { class: "nx-dot" }), "+ Link checkout");
-    pill.addEventListener("click", () => ctx.openDoc(p, "marketing", "Brand kit"));
-    row.append(pill);
-  }
+  const stripe = h(
+    "button",
+    { class: ["nx-pill", "nx-pressable", p.stripeLink && "is-on"], type: "button", title: p.stripeLink ? p.stripeLink : "Paste the Stripe payment link into the Brand kit table" },
+    h("span", { class: ["nx-dot", p.stripeLink && "is-on"] }),
+    p.stripeLink ? "Stripe checkout link" : "+ Add Stripe checkout link",
+  );
+  stripe.addEventListener("click", () => ctx.openDoc(p, "marketing", "Brand kit"));
+  row.append(stripe);
 
   if (p.repoUrl) {
-    const pill = h("button", { class: "nx-pill is-on nx-pressable", type: "button", title: "Click to copy" }, h("span", { class: "nx-dot is-on" }), `Repo · v${p.currentVersion}`);
+    const pill = h("button", { class: "nx-pill is-on nx-pressable", type: "button", title: "Click to copy the repo link" }, h("span", { class: "nx-dot is-on" }), `Code repo · version ${p.currentVersion}`);
     pill.addEventListener("click", async () => {
       await ctx.host.copy(p.repoUrl);
       pill.setAttribute("data-tip", "Copied");
@@ -221,8 +271,8 @@ function connections(ctx: Ctx, p: ProductSnapshot, day: number | null): HTMLElem
     });
     row.append(pill);
   } else {
-    const pill = h("button", { class: "nx-pill nx-pressable", type: "button" }, h("span", { class: "nx-dot" }), "+ Link GitHub repo");
-    pill.addEventListener("click", () => connectSheet(ctx, p, "spec", "repo_url", "GitHub repo URL", "https://github.com/…"));
+    const pill = h("button", { class: "nx-pill nx-pressable", type: "button", title: "Where the product's code lives (GitHub)" }, h("span", { class: "nx-dot" }), "+ Add code repo link");
+    pill.addEventListener("click", () => connectSheet(ctx, p, "spec", "repo_url", "GitHub repo link", "https://github.com/…"));
     row.append(pill);
   }
 
@@ -230,9 +280,9 @@ function connections(ctx: Ctx, p: ProductSnapshot, day: number | null): HTMLElem
   const adsLive = (day ?? 0) >= 15;
   const ads = h(
     "button",
-    { class: ["nx-pill", "nx-pressable", adsLive && t.spend > 0 && "is-on", !adsLive && "is-off"], type: "button", title: adsLive ? "Open the ledger" : "Ads start on day 15" },
+    { class: ["nx-pill", "nx-pressable", adsLive && t.spend > 0 && "is-on", !adsLive && "is-off"], type: "button", title: adsLive ? "Open the Daily numbers table" : "Paid ads start on day 15" },
     h("span", { class: ["nx-dot", adsLive && t.spend > 0 && "is-on"] }),
-    !adsLive ? "Ads · day 15" : t.spend > 0 ? `Ads · $${fmtMoney(t.spend)} spent` : "+ Log ad spend",
+    !adsLive ? "Paid ads start day 15" : t.spend > 0 ? `Paid ads · $${fmtMoney(t.spend)} spent` : "+ Log ad spend",
   );
   ads.addEventListener("click", () => ctx.openDoc(p, "analytics", "ledger"));
   row.append(ads);
@@ -240,14 +290,14 @@ function connections(ctx: Ctx, p: ProductSnapshot, day: number | null): HTMLElem
 }
 
 function organicTable(ctx: Ctx, p: ProductSnapshot): HTMLElement {
-  if (!p.organic.length) return emptyNote("No organic table found in 3_Analytics_And_Gate §2.");
+  if (!p.organic.length) return emptyNote("Couldn't find the free social stats table in Analytics and Gate.");
   return h(
     "div",
     { class: "nx-table-wrap" },
     h(
       "table",
       { class: "nx-table" },
-      h("thead", null, h("tr", null, h("th", null, "Platform"), h("th", { class: "is-num" }, "Followers"), h("th", { class: "is-num" }, "Total views"), h("th", null, "Best video"))),
+      h("thead", null, h("tr", null, h("th", null, "App"), h("th", { class: "is-num" }, "Followers"), h("th", { class: "is-num" }, "Total views"), h("th", null, "Best video"))),
       h(
         "tbody",
         null,
@@ -263,21 +313,24 @@ function organicTable(ctx: Ctx, p: ProductSnapshot): HTMLElement {
         ),
       ),
     ),
-    h("div", { class: "nx-footer-links" }, openLink(ctx, p, "analytics", "Update these numbers →", "Organic snapshot")),
+    h("p", { class: "nx-muted" }, "“—” means nobody has typed it yet. Marketing fills these in until the scheduler is connected."),
+    h("div", { class: "nx-footer-links" }, openLink(ctx, p, "analytics", "Update these numbers in Analytics and Gate →", "Organic snapshot")),
   );
 }
 
 // ── Marketing side ─────────────────────────────────────────────────────────
 
-function counter(ctx: Ctx, p: ProductSnapshot, label: string, done: number, total: number, doc: DocKey, heading: string, sub?: string): HTMLElement {
+function counter(ctx: Ctx, p: ProductSnapshot, field: keyof typeof FIELDS, done: number, total: number, doc: DocKey, heading: string, sub?: string): HTMLElement {
   const full = total > 0 && done >= total;
+  const f = FIELDS[field];
   const b = h(
     "button",
-    { class: ["nx-card", "nx-counter", "nx-pressable", full && "is-full"], type: "button", title: `Open ${heading}` },
-    h("span", { class: "nx-card-label" }, label),
-    h("span", { class: "nx-counter-value" }, `${done}`, h("span", { class: "nx-muted" }, ` / ${total}`), full ? h("span", { class: "nx-counter-check", "aria-label": "complete" }, " ✓") : null),
+    { class: ["nx-card", "nx-counter", "nx-pressable", full && "is-full"], type: "button", title: `${f.what} Click to open ${NOTE_NAMES[doc]} → ${heading}.` },
+    h("span", { class: "nx-card-label" }, f.label),
+    h("span", { class: "nx-counter-value" }, `${done}`, h("span", { class: "nx-muted" }, ` of ${total}`), full ? h("span", { class: "nx-counter-check", "aria-label": "complete" }, " ✓") : null),
     h("div", { class: "nx-mini" }, h("div", { class: "nx-mini-fill", style: { transform: `scaleX(${total ? Math.min(1, done / total) : 0})` } })),
-    sub ? h("span", { class: "nx-muted" }, sub) : null,
+    h("span", { class: "nx-muted" }, sub ?? f.what),
+    h("span", { class: "nx-counter-open" }, `Open ${NOTE_NAMES[doc]} →`),
   );
   b.addEventListener("click", () => ctx.openDoc(p, doc, heading));
   return b;
@@ -289,41 +342,46 @@ function marketing(ctx: Ctx, p: ProductSnapshot): HTMLElement[] {
   const header = h(
     "div",
     { class: "nx-side-head" },
-    h("div", null, h("h2", null, "Marketing side"), h("span", { class: "nx-muted" }, "Owned by the Marketer · 2_Marketing_Engine + 3_Analytics_And_Gate")),
+    h("div", null, h("h2", null, "Marketing side"), h("span", { class: "nx-muted" }, "Everything the Marketer owns for this product. Notes: Marketing Engine + Analytics and Gate.")),
     h(
       "div",
       { class: "nx-side-actions" },
-      ctx.button({ id: `mkt:${p.name}:posted`, label: "Posted today", doneLabel: "Logged", onClick: async () => { const u = await ctx.host.postedToday(p); ctx.mem.flash.set(`${p.name}:post`, Date.now() + 1300); return u; } }),
-      ctx.button({ id: `mkt:${p.name}:log`, label: "Log today's numbers →", variant: "ghost", onClick: () => ctx.openDoc(p, "analytics", "ledger") }),
+      ctx.button({ id: `mkt:${p.name}:posted`, label: "I posted today", doneLabel: "Logged", title: "Records today's date as the last post", onClick: async () => { const u = await ctx.host.postedToday(p); ctx.mem.flash.set(`${p.name}:post`, Date.now() + 1300); return u; } }),
+      ctx.button({ id: `mkt:${p.name}:log`, label: "Log today's numbers →", variant: "ghost", title: "Opens the Daily numbers table", onClick: () => ctx.openDoc(p, "analytics", "ledger") }),
     ),
   );
   const counters = h(
-    "div",
-    { class: "nx-counters" },
-    counter(ctx, p, "Competitor swipe", p.competitorsFilled, 3, "marketing", "Competitor swipe"),
-    counter(ctx, p, "Hook scripts", p.hooksFilled, 3, "marketing", "Hook scripts"),
-    counter(ctx, p, "Brand kit", p.brandKit.filled, p.brandKit.total || 6, "marketing", "Brand kit"),
-    counter(ctx, p, "Content scheduled", b.scheduled, Math.max(b.total, 1), "marketing", "Content backlog", b.total ? `${b.scripted} scripted · ${b.recorded} recorded · ${b.edited} edited` : "Backlog is empty"),
+    "section",
+    { class: "nx-section" },
+    h("h3", { class: "nx-section-title" }, "Before launch: get these to full"),
+    h(
+      "div",
+      { class: "nx-counters" },
+      counter(ctx, p, "competitors", p.competitorsFilled, 3, "marketing", "Competitor swipe"),
+      counter(ctx, p, "hooks", p.hooksFilled, 3, "marketing", "Hook scripts"),
+      counter(ctx, p, "brandKit", p.brandKit.filled, p.brandKit.total || 6, "marketing", "Brand kit"),
+      counter(ctx, p, "scheduled", b.scheduled, Math.max(b.total, 1), "marketing", "Content backlog", b.total ? `${b.scripted} written · ${b.recorded} recorded · ${b.edited} edited` : "No videos in the content backlog yet"),
+    ),
   );
   return [
     header,
+    questLog(ctx, { id: `mkt:${p.name}`, field: "questLog", title: "Marketing quests", quests: quests(ctx, p), product: p, lockedFilter: "marketing", emptyText: "No marketing quests right now." }),
     counters,
-    section(
-      `Ad spend vs revenue · days 15–${st.totalDays}`,
-      spendChart(ctx, p, st.totalDays),
-    ),
-    section("Organic snapshot", organicTable(ctx, p)),
-    h("div", { class: "nx-footer-links" }, openLink(ctx, p, "marketing", "Open 2 · Marketing Engine →"), openLink(ctx, p, "analytics", "Open 3 · Analytics and Gate →")),
+    infoSection(ctx, "dailyNumbers", `Ad spend vs revenue, day by day (days 15–${st.totalDays})`, spendChart(ctx, p, st.totalDays)),
+    infoSection(ctx, "socialStats", undefined, organicTable(ctx, p)),
+    h("div", { class: "nx-footer-links" }, openLink(ctx, p, "marketing", "Open Marketing Engine →"), openLink(ctx, p, "analytics", "Open Analytics and Gate →")),
   ];
 }
 
-/** Grouped bars per day, one $ axis. Hover or focus a day for exact values; the ledger is the table view. */
+/** Grouped bars per day, one $ axis. Hover or focus a day for exact values; the Daily numbers table is the table view. */
 function spendChart(ctx: Ctx, p: ProductSnapshot, totalDays: number): HTMLElement {
   const days = Array.from({ length: totalDays - 14 }, (_, i) => 15 + i);
   const rows = days.map((d) => p.ledger.find((r) => r.day === d) ?? { day: d, spend: 0, revenue: 0 });
   const max = Math.max(...rows.map((r) => Math.max(r.spend, r.revenue)));
   if (max <= 0) {
-    return emptyNote("No ad spend or revenue logged yet. The ledger starts on day 15.", openLink(ctx, p, "analytics", "Open ledger →", "ledger"));
+    const st = ctx.status(p);
+    const text = (st.day ?? 0) < 15 ? "⏳ Not yet: paid ads and the Daily numbers table start on day 15." : "✍️ Needs you · Marketing: no numbers logged yet. Copy them from Ads Manager into the Daily numbers table.";
+    return emptyNote(text, openLink(ctx, p, "analytics", "Open Daily numbers →", "ledger"));
   }
   const W = 640;
   const H = 200;
@@ -360,7 +418,7 @@ function spendChart(ctx: Ctx, p: ProductSnapshot, totalDays: number): HTMLElemen
     const cx = gx + group / 2;
     const xs = cx - bw - 1;
     const xr = cx + 1;
-    const g = s("g", { class: "nx-bar-group", tabindex: "0", "aria-label": `Day ${r.day}: spend ${moneyExact(r.spend)}, revenue ${moneyExact(r.revenue)}` });
+    const g = s("g", { class: "nx-bar-group", tabindex: "0", "aria-label": `Day ${r.day}: ad spend ${moneyExact(r.spend)}, revenue ${moneyExact(r.revenue)}` });
     g.append(s("rect", { x: gx, y: pad.t, width: group, height: ih, class: "nx-hit" }));
     if (r.spend > 0) g.append(s("path", { d: barPath(xs, r.spend), class: "nx-bar nx-bar-spend" }));
     if (r.revenue > 0) g.append(s("path", { d: barPath(xr, r.revenue), class: "nx-bar nx-bar-revenue" }));
@@ -391,7 +449,7 @@ function spendChart(ctx: Ctx, p: ProductSnapshot, totalDays: number): HTMLElemen
     { class: "nx-legend" },
     h("span", null, h("span", { class: "nx-key nx-key-spend" }), "Ad spend"),
     h("span", null, h("span", { class: "nx-key nx-key-revenue" }), "Revenue"),
-    openLink(ctx, p, "analytics", "Open ledger (table) →", "ledger"),
+    openLink(ctx, p, "analytics", "See the full table →", "ledger"),
   );
   wrap.append(svg, tip);
   return h("div", null, legend, wrap);
@@ -404,24 +462,24 @@ function niceMax(v: number): number {
   return n * exp;
 }
 
-// ── Dev side ───────────────────────────────────────────────────────────────
+// ── Developer side ─────────────────────────────────────────────────────────
 
 function dev(ctx: Ctx, p: ProductSnapshot): HTMLElement[] {
   const { today, mem } = ctx;
   const header = h(
     "div",
     { class: "nx-side-head" },
-    h("div", null, h("h2", null, "Developer side"), h("span", { class: "nx-muted" }, "Owned by the Developer · 1_Dev_Spec, 4_Launch_Checklist, 5_Changelog, 6_RedTeam_Audit")),
-    h("div", { class: "nx-side-actions" }, ctx.button({ id: `dev:${p.name}:changelog`, label: "Open changelog →", variant: "ghost", onClick: () => ctx.openDoc(p, "changelog") })),
+    h("div", null, h("h2", null, "Developer side"), h("span", { class: "nx-muted" }, "Everything the Developer owns for this product. Notes: Dev Spec, Launch Checklist, Changelog, Red-Team Audit.")),
+    h("div", { class: "nx-side-actions" }, ctx.button({ id: `dev:${p.name}:changelog`, label: "Open Changelog →", variant: "ghost", onClick: () => ctx.openDoc(p, "changelog") })),
   );
 
   // Day-14 readiness light: one segment per condition; glows once when all are done.
   const checklistDone = p.launchChecks.total > 0 && p.launchChecks.done === p.launchChecks.total;
   const segs = [
-    { ok: checklistDone, label: `Checklist ${p.launchChecks.done}/${p.launchChecks.total}`, doc: "launch" as DocKey, heading: "Product" },
-    { ok: p.blockingIssuesOpen === 0 && !!p.auditDate, label: p.auditDate ? `${p.blockingIssuesOpen} blocking issue${p.blockingIssuesOpen === 1 ? "" : "s"}` : "Red-team audit not run", doc: "audit" as DocKey, heading: "Result" },
-    { ok: p.signedOffDev, label: "Dev signed", doc: "launch" as DocKey, heading: "Sign-off" },
-    { ok: p.signedOffMarketing, label: "Marketing signed", doc: "launch" as DocKey, heading: "Sign-off" },
+    { ok: checklistDone, label: `Launch Checklist ${p.launchChecks.done} of ${p.launchChecks.total}`, doc: "launch" as DocKey, heading: "Product" },
+    { ok: p.blockingIssuesOpen === 0 && !!p.auditDate, label: p.auditDate ? `Break-it test: ${p.blockingIssuesOpen} blocking problem${p.blockingIssuesOpen === 1 ? "" : "s"}` : "Break-it test not done yet", doc: "audit" as DocKey, heading: "Result" },
+    { ok: p.signedOffDev, label: "Developer signed off", doc: "launch" as DocKey, heading: "Sign-off" },
+    { ok: p.signedOffMarketing, label: "Marketer signed off", doc: "launch" as DocKey, heading: "Sign-off" },
   ];
   const allOk = segs.every((x) => x.ok);
   const glowKey = `ready:${p.name}`;
@@ -429,32 +487,36 @@ function dev(ctx: Ctx, p: ProductSnapshot): HTMLElement[] {
   if (allOk) mem.glowed.add(glowKey);
   else mem.glowed.delete(glowKey);
   const readiness = h(
-    "div",
-    { class: ["nx-card", "nx-ready", allOk && "is-ready", glow && "nx-glow"] },
-    h("div", { class: "nx-ready-head" }, h("span", { class: "nx-card-label" }, "Day-14 launch readiness"), h("strong", null, allOk ? "✓ Ready to launch" : `${segs.filter((x) => x.ok).length} of 4 done`)),
+    "section",
+    { class: "nx-section" },
+    sectionHead(ctx, "readiness", undefined, h("strong", null, allOk ? "✓ Ready to launch" : `${segs.filter((x) => x.ok).length} of 4 done`)),
     h(
       "div",
-      { class: "nx-segs" },
-      segs.map((sg) => {
-        const b = h("button", { class: ["nx-seg", "nx-pressable", sg.ok && "is-ok"], type: "button" }, h("span", { class: "nx-seg-bar" }), h("span", { class: "nx-seg-label" }, sg.ok ? `✓ ${sg.label}` : sg.label));
-        b.addEventListener("click", () => ctx.openDoc(p, sg.doc, sg.heading));
-        return b;
-      }),
+      { class: ["nx-card", "nx-ready", allOk && "is-ready", glow && "nx-glow"] },
+      h(
+        "div",
+        { class: "nx-segs" },
+        segs.map((sg) => {
+          const b = h("button", { class: ["nx-seg", "nx-pressable", sg.ok && "is-ok"], type: "button", title: `Open ${NOTE_NAMES[sg.doc]}` }, h("span", { class: "nx-seg-bar" }), h("span", { class: "nx-seg-label" }, sg.ok ? `✓ ${sg.label}` : sg.label));
+          b.addEventListener("click", () => ctx.openDoc(p, sg.doc, sg.heading));
+          return b;
+        }),
+      ),
     ),
   );
 
   const mech = h(
     "div",
     { class: "nx-card" },
-    h("span", { class: "nx-card-label" }, "Core mechanics (max 3)"),
+    h("span", { class: "nx-card-label" }, FIELDS.mechanics.label),
     p.pitch ? h("p", { class: "nx-pitch" }, `“${p.pitch}”`) : null,
     p.mechanics.length
       ? h("ol", { class: "nx-mech" }, p.mechanics.map((m) => h("li", null, m)))
-      : emptyNote("Not filled in yet.", openLink(ctx, p, "spec", "Open spec →", "Core mechanics")),
+      : emptyNote("Not written yet. Claude can help draft them.", openLink(ctx, p, "spec", "Open Dev Spec →", "Core mechanics")),
     h(
       "div",
       { class: "nx-milestones" },
-      h("span", { class: "nx-muted" }, `Build plan ${p.milestones.done}/${p.milestones.total}`),
+      h("span", { class: "nx-muted" }, `Build plan: ${p.milestones.done} of ${p.milestones.total} milestones done`),
       h("div", { class: "nx-mini" }, h("div", { class: "nx-mini-fill", style: { transform: `scaleX(${p.milestones.total ? p.milestones.done / p.milestones.total : 0})` } })),
     ),
   );
@@ -462,7 +524,7 @@ function dev(ctx: Ctx, p: ProductSnapshot): HTMLElement[] {
   const changes = h(
     "div",
     { class: "nx-card" },
-    h("span", { class: "nx-card-label" }, `Changelog · v${p.currentVersion} · ${p.lastChangelogDate ? "" : "no entries yet"}`, p.lastChangelogDate ? rel(p.lastChangelogDate, today) : null),
+    h("span", { class: "nx-card-label" }, `${FIELDS.changelog.label} · version ${p.currentVersion}`, p.lastChangelogDate ? rel(p.lastChangelogDate, today) : null),
     p.changelog.length
       ? h(
           "ul",
@@ -477,30 +539,30 @@ function dev(ctx: Ctx, p: ProductSnapshot): HTMLElement[] {
             ),
           ),
         )
-      : emptyNote("Every entry updates the Last dev timer and keeps the square out of Stale."),
+      : emptyNote("No entries yet. Each entry resets the Gone Quiet timer during the build."),
   );
 
   const repo = p.repoUrl
     ? h("a", { class: "nx-link", href: p.repoUrl, target: "_blank", rel: "noopener" }, `${p.repoUrl.replace(/^https?:\/\//, "")} ↗`)
     : (() => {
-        const b = h("button", { class: "nx-link", type: "button" }, "+ Link GitHub repo");
-        b.addEventListener("click", () => connectSheet(ctx, p, "spec", "repo_url", "GitHub repo URL", "https://github.com/…"));
+        const b = h("button", { class: "nx-link", type: "button" }, "+ Add code repo link");
+        b.addEventListener("click", () => connectSheet(ctx, p, "spec", "repo_url", "GitHub repo link", "https://github.com/…"));
         return b;
       })();
 
   return [
     header,
+    questLog(ctx, { id: `dev:${p.name}`, field: "questLog", title: "Developer quests", quests: quests(ctx, p), product: p, lockedFilter: "dev", emptyText: "No developer quests right now." }),
     readiness,
     h("div", { class: "nx-two" }, mech, changes),
     h(
       "div",
       { class: "nx-footer-links" },
-      h("span", null, "Repo: ", repo),
-      openLink(ctx, p, "spec", "1 · Dev Spec →"),
-      openLink(ctx, p, "launch", "4 · Launch Checklist →"),
-      openLink(ctx, p, "changelog", "5 · Changelog →"),
-      openLink(ctx, p, "audit", "6 · Red-Team Audit →"),
+      h("span", null, "Code repo: ", repo),
+      openLink(ctx, p, "spec", "Dev Spec →"),
+      openLink(ctx, p, "launch", "Launch Checklist →"),
+      openLink(ctx, p, "changelog", "Changelog →"),
+      openLink(ctx, p, "audit", "Red-Team Audit →"),
     ),
   ];
 }
-

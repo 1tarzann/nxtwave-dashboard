@@ -192,3 +192,21 @@ export function buildHubNote(input: NewSprintInput, today: string, startNow: boo
     "",
   ].join("\n");
 }
+
+/**
+ * Ticks or unticks one checklist line. `match` is either the exact line as written (company notes)
+ * or the start of the item text (launch checklist, e.g. "Checkout works"). Returns the note unchanged if not found.
+ */
+export function setChecklistLine(raw: string, match: { line?: string; textStart?: string }, checked: boolean): string {
+  const lines = raw.split("\n");
+  const i = lines.findIndex((l) => {
+    const clean = l.replace(/\r$/, "");
+    const m = /^(\s*[-*+]\s+\[)([ xX])(\]\s?)(.*)$/.exec(clean);
+    if (!m) return false;
+    if (match.line !== undefined) return clean === match.line.replace(/\r$/, "");
+    return !!match.textStart && m[4].replace(/\*\*/g, "").toLowerCase().startsWith(match.textStart.toLowerCase());
+  });
+  if (i === -1) return raw;
+  lines[i] = lines[i].replace(/^(\s*[-*+]\s+\[)[ xX](\])/, (_m, a: string, b: string) => `${a}${checked ? "x" : " "}${b}`);
+  return lines.join("\n");
+}

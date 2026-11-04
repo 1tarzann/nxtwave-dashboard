@@ -73,7 +73,7 @@ export async function confirmStartDay1(ctx: Ctx, p: ProductSnapshot): Promise<vo
       h("div", null, h("dt", null, "Launch gate (day 14)"), h("dd", null, longDate(addDays(today, 13)))),
       h("div", null, h("dt", null, "Verdict (day 28)"), h("dd", null, longDate(addDays(today, 27)))),
     ),
-    h("p", { class: "nx-muted" }, `Writes sprint_status: building, cycle_start and gate_date into ${p.displayName}'s hub note and all 6 sprint files. You can undo for 5 seconds.`),
+    h("p", { class: "nx-muted" }, `Sets Day 1 to today in ${p.displayName}'s hub note and all 6 notes, so the 28-day countdown starts. You can undo it for 5 seconds.`),
     other.length
       ? h("p", { class: "nx-error-box", role: "alert" }, `${other.map((o) => o.displayName).join(", ")} is still active. One sprint at a time: finish its day-28 verdict first.`)
       : null,
@@ -122,7 +122,7 @@ export function connectSheet(ctx: Ctx, p: ProductSnapshot, doc: DocKey, key: str
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") (save.querySelector("button") as HTMLButtonElement).click();
     });
-    return [field(label, input, `Saved to ${p.displayName} → ${doc === "spec" ? "1_Dev_Spec" : "2_Marketing_Engine"} (${key}).`), h("div", { class: "nx-sheet-actions" }, save, cancel(sheet))];
+    return [field(label, input, `Saved in ${p.displayName}'s ${doc === "spec" ? "Dev Spec" : "Marketing Engine"} note. You can undo it for 5 seconds.`), h("div", { class: "nx-sheet-actions" }, save, cancel(sheet))];
   });
 }
 
@@ -134,7 +134,7 @@ export function newSprintWizard(ctx: Ctx, prefill: { name?: string; originIdea?:
     const updateHint = () => {
       const f = sanitizeName(name.value);
       const exists = ctx.data.products.some((p) => p.name.toLowerCase() === f.toLowerCase());
-      folderHint.textContent = f ? `Folder: 02_Active_Sprints/${f}/ · hub: ${f}_Hub${exists ? " · ⚠ already exists" : ""}` : "Letters, numbers and spaces";
+      folderHint.textContent = f ? `Creates the folder 02_Active_Sprints/${f} with a hub note and the 6 standard notes${exists ? " · ⚠ a product with this name already exists" : ""}` : "Letters, numbers and spaces";
       folderHint.classList.toggle("is-bad", exists);
     };
     name.addEventListener("input", updateHint);
@@ -215,6 +215,41 @@ export function newSprintWizard(ctx: Ctx, prefill: { name?: string; originIdea?:
       ),
       prefill.originIdea ? h("p", { class: "nx-muted" }, `Linked to idea: ${prefill.originIdea.title}. The idea note isn't moved; archive it yourself when you're ready.`) : null,
       h("div", { class: "nx-sheet-actions" }, create, cancel(sheet)),
+    ];
+  });
+}
+
+/** One sheet for all social handles (the "Create the accounts" quest). */
+export async function handlesSheet(ctx: Ctx, p: ProductSnapshot): Promise<void> {
+  const apps: [string, "tiktok" | "instagram" | "youtube" | "x"][] = [
+    ["TikTok", "tiktok"],
+    ["Instagram", "instagram"],
+    ["YouTube", "youtube"],
+    ...(p.hasXField ? ([["X", "x"]] as [string, "x"][]) : []),
+  ];
+  openSheet(ctx, `${p.displayName}: paste the social handles`, (sheet) => {
+    const inputs = apps.map(([label, key]) => {
+      const input = h("input", { class: "nx-input", type: "text", placeholder: "@handle", value: p.handles[key], autocomplete: "off", spellcheck: "false" });
+      return { key, input, el: field(label, input) };
+    });
+    const save = ctx.button({
+      id: `sheet:handles:${p.name}`,
+      label: "Save handles",
+      doneLabel: "Saved",
+      onClick: async () => {
+        const values: Record<string, string> = {};
+        for (const { key, input } of inputs) if (input.value.trim() !== p.handles[key]) values[key] = input.value.trim();
+        if (!Object.keys(values).length) throw new Error("Nothing changed. Paste at least one handle.");
+        const undo = await ctx.host.setFields(p, "marketing", values);
+        window.setTimeout(sheet.close, 700);
+        return undo;
+      },
+    });
+    return [
+      h("p", { class: "nx-muted" }, "Create each account in its app first (Claude can't: each one needs a phone number and a login). Leave a box empty if that account doesn't exist yet."),
+      ...inputs.map((i) => i.el),
+      h("p", { class: "nx-muted" }, `Saved in ${p.displayName}'s Marketing Engine note. You can undo it for 5 seconds.`),
+      h("div", { class: "nx-sheet-actions" }, save, cancel(sheet)),
     ];
   });
 }

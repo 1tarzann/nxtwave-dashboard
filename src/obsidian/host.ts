@@ -4,9 +4,9 @@
 import { App, Notice, TFile, WorkspaceLeaf } from "obsidian";
 import { addDays, toIsoDate } from "../data/dates";
 import { activeProducts } from "../data/status";
-import { buildHubNote, fillTemplate, NewSprintInput, readFrontmatterRaw, sanitizeName, setFrontmatterRaw, TEMPLATE_FILES, yamlValue } from "../data/templates";
+import { buildHubNote, fillTemplate, NewSprintInput, readFrontmatterRaw, sanitizeName, setChecklistLine, setFrontmatterRaw, TEMPLATE_FILES, yamlValue } from "../data/templates";
 import { DashboardData, DOC_FILES, DOC_ORDER, DocKey, ProductSnapshot } from "../data/types";
-import { Host, Undo } from "../ui/host";
+import { Host, Prefs, Undo } from "../ui/host";
 import { join } from "./reader";
 
 type Patch = Record<string, string>;
@@ -19,7 +19,45 @@ export class ObsidianHost implements Host {
     readonly version: string,
     private getData: () => DashboardData | null,
     private ownLeaf: () => WorkspaceLeaf,
+    readonly prefs: Prefs,
+    private persistPrefs: (p: Prefs) => Promise<void>,
   ) {}
+
+  async savePrefs(p: Partial<Prefs>): Promise<void> {
+    Object.assign(this.prefs, p);
+    await this.persistPrefs(this.prefs);
+  }
+
+  async tickLine(path: string, match: { line?: string; textStart?: string }, checked: boolean): Promise<Undo> {
+    const f = this.file(path);
+    let changed = false;
+    await this.app.vault.process(f, (data) => {
+      const next = setChecklistLine(data, match, checked);
+      changed = next !== data;
+      return next;
+    });
+    if (!changed) throw new Error("Couldn't find that line in the note any more. Open the note and tick it by hand.");
+    // Undo flips only that one checkbox back, so edits made in the meantime are kept.
+    const after = match.line !== undefined ? { line: setChecklistLine(match.line, { line: match.line }, checked) } : match;
+    return async () => {
+      let found = false;
+      await this.app.vault.process(this.file(path), (data) => {
+        const reverted = setChecklistLine(data, after, !checked);
+        found = reverted !== data;
+        return reverted;
+      });
+      if (!found) throw new Error("That line changed since, so it wasn't undone. Open the note to check it.");
+    };
+  }
+
+  async setFlag(p: ProductSnapshot, doc: DocKey, key: string, value: boolean): Promise<Undo> {
+    return this.patch([{ path: this.file(p.paths[doc]).path, values: { [key]: value ? "true" : "false", last_updated: this.today() } }]);
+  }
+
+  async setFields(p: ProductSnapshot, doc: DocKey, values: Record<string, string>): Promise<Undo> {
+    const yaml = Object.fromEntries(Object.entries(values).map(([k, v]) => [k, yamlValue(v)]));
+    return this.patch([{ path: this.file(p.paths[doc]).path, values: { ...yaml, last_updated: this.today() } }]);
+  }
 
   private today(): string {
     return toIsoDate(Date.now());

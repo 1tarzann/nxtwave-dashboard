@@ -666,3 +666,78 @@ body.nx-reduce-motion .nx-root .nx-flash { background-color: rgba(245, 158, 11, 
 body.nx-reduce-motion .nx-root .nx-btn.is-busy .nx-btn-spin { border-right-color: currentColor; opacity: 0.5; }
 body.nx-reduce-motion .nx-root .nx-pressable:hover { transform: none; }
 body.nx-reduce-motion .nx-root .nx-pulse::after { opacity: 0.9; }
+
+/* ── 0.3: section heads with ⓘ, source tags, quests, guide, legend, help ──
+   (same rule as above: keep the "body .nx-root" prefix) */
+body .nx-root { --nx-dev: #2a78d6; --nx-mkt: #6250d6; }
+body.theme-dark .nx-root { --nx-dev: #3987e5; --nx-mkt: #9085e9; }
+
+body .nx-root .nx-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+body .nx-root .nx-head .nx-section-title { margin: 0; }
+body .nx-root .nx-head-extra { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; font-size: 0.85em; }
+body .nx-root .nx-info-btn { width: 24px; height: 24px; padding: 0; border-radius: 50%; border: 1px solid var(--nx-border); background: var(--nx-surface); color: var(--nx-muted); font-size: 13px; line-height: 1; box-shadow: none; cursor: pointer; }
+body .nx-root .nx-info-btn.is-on, body .nx-root .nx-info-btn:hover { color: var(--nx-accent); border-color: var(--nx-accent); box-shadow: none; }
+body .nx-root .nx-info-card { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px 16px; margin: 0 0 12px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--nx-border); border-left: 4px solid var(--nx-accent); background: var(--nx-surface-2); font-size: 0.88em; }
+body .nx-root .nx-info-card dt { font-size: 0.75em; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--nx-muted); }
+body .nx-root .nx-info-card dd { margin: 2px 0 0; }
+
+body .nx-root .nx-source { display: inline-block; align-self: flex-start; margin-top: 4px; padding: 2px 8px; border-radius: 999px; font-size: 0.75em; font-weight: 600; background: rgba(127, 127, 127, 0.14); color: var(--nx-muted); }
+body .nx-root .nx-source.is-youfill { background: color-mix(in srgb, var(--nx-stale) 18%, transparent); color: var(--nx-text); }
+body .nx-root .nx-source.is-auto { background: color-mix(in srgb, var(--nx-healthy) 22%, transparent); color: var(--nx-text); }
+body .nx-root .nx-source.is-fix { background: color-mix(in srgb, var(--nx-gate) 25%, transparent); color: var(--nx-text); }
+body .nx-root .nx-tile-value.is-empty { color: var(--nx-faint); }
+body .nx-root .nx-square .nx-sq-quests { font-size: 0.85em; font-weight: 600; }
+
+body .nx-root .nx-quests { margin-top: 22px; }
+body .nx-root .nx-quest-progress { display: inline-flex; align-items: center; gap: 8px; }
+body .nx-root .nx-quest-bar { width: 90px; display: inline-block; }
+body .nx-root .nx-filter { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+body .nx-root .nx-filter-chip { height: auto; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--nx-border); background: transparent; color: var(--nx-muted); font: inherit; font-size: 0.85em; font-weight: 600; box-shadow: none; cursor: pointer; }
+body .nx-root .nx-filter-chip.is-on { background: var(--nx-text); color: var(--nx-surface); border-color: var(--nx-text); }
+body .nx-root .nx-quest-list { display: flex; flex-direction: column; gap: 10px; }
+body .nx-root .nx-quest-group { margin: 8px 0 0; font-size: 0.78em; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--nx-muted); }
+body .nx-root .nx-quest { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--nx-border); border-left: 5px solid var(--nx-border); background: var(--nx-surface-2); }
+body .nx-root .nx-quest.own-dev { border-left-color: var(--nx-dev); }
+body .nx-root .nx-quest.own-marketing { border-left-color: var(--nx-mkt); }
+body .nx-root .nx-quest.own-both { border-left-color: var(--nx-faint); }
+body .nx-root .nx-quest.is-overdue { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nx-stale) 55%, transparent); }
+body .nx-root .nx-quest.is-done { opacity: 0.7; }
+body .nx-root .nx-quest.is-done .nx-quest-title { text-decoration: line-through; color: var(--nx-muted); }
+body .nx-root .nx-quest.is-upcoming { opacity: 0.85; }
+body .nx-root .nx-quest-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+body .nx-root .nx-owner { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 0.7em; font-weight: 800; letter-spacing: 0.06em; background: rgba(127, 127, 127, 0.18); color: var(--nx-text); }
+body .nx-root .nx-owner.own-dev { background: color-mix(in srgb, var(--nx-dev) 20%, transparent); color: var(--nx-text); }
+body .nx-root .nx-owner.own-marketing { background: color-mix(in srgb, var(--nx-mkt) 20%, transparent); color: var(--nx-text); }
+body .nx-root .nx-daily { font-size: 0.7em; font-weight: 800; letter-spacing: 0.06em; color: var(--nx-muted); }
+body .nx-root .nx-quest-when { margin-left: auto; font-size: 0.8em; color: var(--nx-muted); }
+body .nx-root .nx-quest-when.is-late { color: var(--nx-text); font-weight: 700; }
+body .nx-root .nx-quest-when.is-late::before { content: "⚠ "; }
+body .nx-root .nx-quest-title { margin: 0; font-size: 1em; font-weight: 700; }
+body .nx-root .nx-quest-check { color: var(--nx-good-text); }
+body .nx-root .nx-quest-why { margin: 0; }
+body .nx-root .nx-quest-meta { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 0.82em; color: var(--nx-muted); }
+body .nx-root .nx-quest-prog { display: flex; align-items: center; gap: 8px; font-size: 0.82em; }
+body .nx-root .nx-quest-prog .nx-mini { flex: 0 1 160px; }
+body .nx-root .nx-quest-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; margin-top: 2px; }
+body .nx-root .nx-show-all { margin-top: 8px; }
+
+body .nx-root .nx-guide { margin-bottom: 14px; padding: 16px 18px; border-radius: var(--nx-radius); border: 1px solid var(--nx-accent); background: color-mix(in srgb, var(--nx-accent) 8%, var(--nx-surface)); }
+body .nx-root .nx-guide h3 { margin: 0 0 8px; }
+body .nx-root .nx-guide ol { margin: 0 0 8px; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+
+body .nx-root .nx-next-wrap .nx-head { margin-bottom: 6px; }
+body .nx-root .nx-legend-row { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: -2px 0 6px; font-size: 0.78em; color: var(--nx-muted); }
+body .nx-root .nx-legend-item { display: inline-flex; align-items: center; gap: 6px; cursor: help; }
+body .nx-root .nx-legend-swatch { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; border: 1px solid var(--nx-border); background: var(--nx-c); color: var(--nx-ink); font-size: 11px; font-weight: 800; }
+body .nx-root .nx-counter-open { font-size: 0.8em; color: var(--nx-accent); }
+
+body .nx-root .nx-help-btn { height: auto; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--nx-border); background: var(--nx-surface-2); color: var(--nx-text); font: inherit; font-weight: 700; box-shadow: none; cursor: pointer; }
+body .nx-root .nx-help-h { margin: 8px 0 0; font-size: 0.85em; font-weight: 800; letter-spacing: 0.04em; }
+body .nx-root .nx-help-list { display: flex; flex-direction: column; gap: 8px; margin: 0; }
+body .nx-root .nx-help-list > div { display: grid; grid-template-columns: minmax(130px, 34%) 1fr; gap: 10px; align-items: baseline; }
+body .nx-root .nx-help-list dt { font-weight: 700; }
+body .nx-root .nx-help-list dd { margin: 0; color: var(--nx-muted); }
+@container (max-width: 560px) {
+  body .nx-root .nx-help-list > div { grid-template-columns: 1fr; gap: 2px; }
+  body .nx-root .nx-quest-when { margin-left: 0; }
+}

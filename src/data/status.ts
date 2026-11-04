@@ -6,13 +6,13 @@ import { computeTotals } from "./snapshot";
 import { DashboardData, ProductSnapshot, StatusResult, Thresholds, Totals } from "./types";
 
 export const STATUS_STYLE = {
-  kill: { label: "KILL SIGNAL", icon: "✕" },
-  gate: { label: "GATE TODAY", icon: "⚑" },
-  stale: { label: "STALE", icon: "⏸" },
-  healthy: { label: "HEALTHY", icon: "✓" },
-  unstarted: { label: "CLOCK NOT STARTED", icon: "◷" },
-  queued: { label: "QUEUED", icon: "○" },
-  closed: { label: "CLOSED", icon: "■" },
+  kill: { label: "KILL SIGNAL", icon: "✕", meaning: "The numbers say stop: money spent, nobody bought. Open the vote." },
+  gate: { label: "DECISION DAY", icon: "⚑", meaning: "Launch day (14) or decision day (28). Something needs signing or voting today." },
+  stale: { label: "GONE QUIET", icon: "⏸", meaning: "Nothing happened for 3 days. The fix button shows what to do." },
+  healthy: { label: "ON TRACK", icon: "✓", meaning: "Nothing urgent. Keep going." },
+  unstarted: { label: "NOT STARTED", icon: "◷", meaning: "Day 1 isn't set, so the 28-day countdown hasn't begun." },
+  queued: { label: "WAITING IN LINE", icon: "○", meaning: "Waits for the current sprint's decision. One sprint at a time." },
+  closed: { label: "CLOSED", icon: "■", meaning: "Decided: scaled or killed." },
 } as const;
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
@@ -22,10 +22,10 @@ export function sprintDay(cycleStart: string | null, today: string): number | nu
 }
 
 export function phaseName(day: number | null, status: string): string {
-  if (day === null) return status === "queued" ? "Waiting" : "Not started";
+  if (day === null) return status === "queued" ? "Waiting in line" : "Not started";
   if (day < 1) return "Starts soon";
-  if (day <= 14) return "Build phase";
-  if (day <= 28) return "Watch phase";
+  if (day <= 14) return "Building (days 1–14)";
+  if (day <= 28) return "Watching the numbers (days 15–28)";
   return status === "extended" ? "Extension" : "Past gate";
 }
 
@@ -48,10 +48,10 @@ export function computeStatus(p: ProductSnapshot, th: Thresholds, today: string,
     return make("closed", status === "scaled" ? "Scaled: kept and improving" : "Killed: archived", null, status.toUpperCase());
   }
   if (status === "queued") {
-    return make("queued", "Waits for the current sprint's day-28 verdict", null);
+    return make("queued", "Waits until the current sprint's day-28 decision", null);
   }
   if (day === null) {
-    return make("unstarted", "Day 1 isn't set yet", { kind: "startDay1", label: "Start Day 1" });
+    return make("unstarted", "Day 1 isn't set, so the 28-day countdown hasn't started", { kind: "startDay1", label: "Start Day 1" });
   }
   if (day < 1) {
     return make("unstarted", `Day 1 is ${relativeDay(p.cycleStart, today)}`, null);
@@ -59,29 +59,29 @@ export function computeStatus(p: ProductSnapshot, th: Thresholds, today: string,
 
   // 1. Kill signal
   if (p.verdict === "kill") {
-    return make("kill", "Partners voted Kill: stop all spend and archive", { kind: "openDoc", doc: "analytics", heading: "Day-28 verdict", label: "Open verdict" });
+    return make("kill", "You both voted Kill: stop all spending and archive it", { kind: "openDoc", doc: "analytics", heading: "Day-28 verdict", label: "Open the vote" });
   }
   if (day >= 21) {
     if (totals.spend >= th.killSpendNoSales && totals.sales === 0 && totals.signups === 0) {
-      return make("kill", `$${fmtMoney(totals.spend)} spent, 0 sales or sign-ups`, { kind: "openDoc", doc: "analytics", heading: "Day-28 verdict", label: "Open verdict" });
+      return make("kill", `$${fmtMoney(totals.spend)} spent, 0 sales or sign-ups`, { kind: "openDoc", doc: "analytics", heading: "Day-28 verdict", label: "Open the vote" });
     }
     if (th.killMinCtr !== null && totals.ctr !== null && totals.ctr < th.killMinCtr) {
-      return make("kill", `Click rate ${totals.ctr.toFixed(2)}% (minimum ${th.killMinCtr}%)`, { kind: "openDoc", doc: "analytics", heading: "Day-28 verdict", label: "Open verdict" });
+      return make("kill", `Only ${totals.ctr.toFixed(2)}% of people who saw the ad clicked (your minimum is ${th.killMinCtr}%)`, { kind: "openDoc", doc: "analytics", heading: "Day-28 verdict", label: "Open the vote" });
     }
   }
 
   // 2. Gate today (or overdue)
   if (day === 14) {
-    return make("gate", "Launch gate: sign off the checklist, then publish", { kind: "openDoc", doc: "launch", heading: "Sign-off", label: "Open launch checklist" });
+    return make("gate", "Launch day: both sign off the Launch Checklist, then publish", { kind: "openDoc", doc: "launch", heading: "Sign-off", label: "Open Launch Checklist" });
   }
   if (day === 28) {
-    return make("gate", "Verdict day: both partners vote Scale or Kill", { kind: "openDoc", doc: "analytics", heading: "Day-28 verdict", label: "Open verdict" });
+    return make("gate", "Decision day: both partners vote Scale or Kill", { kind: "openDoc", doc: "analytics", heading: "Day-28 verdict", label: "Open the vote" });
   }
   if (extended && day === 35) {
-    return make("gate", "Extension ends today: final vote", { kind: "openDoc", doc: "analytics", heading: "Day-28 verdict", label: "Open verdict" });
+    return make("gate", "The extra week ends today: final vote", { kind: "openDoc", doc: "analytics", heading: "Day-28 verdict", label: "Open the vote" });
   }
   if (day > totalDays && p.verdict === "pending") {
-    return make("gate", `Verdict overdue by ${plural(day - totalDays, "day")}`, { kind: "openDoc", doc: "analytics", heading: "Day-28 verdict", label: "Open verdict" }, "GATE OVERDUE");
+    return make("gate", `The Scale-or-Kill vote is ${plural(day - totalDays, "day")} late`, { kind: "openDoc", doc: "analytics", heading: "Day-28 verdict", label: "Open the vote" }, "DECISION OVERDUE");
   }
 
   // 3. Stale (phase-aware)
@@ -93,19 +93,19 @@ export function computeStatus(p: ProductSnapshot, th: Thresholds, today: string,
     const devStale = devQuiet >= th.staleDays;
     const mktStale = mktQuiet >= th.staleDays;
     if (devStale && (!mktStale || devQuiet >= mktQuiet)) {
-      const r = make("stale", `No changelog entry in ${plural(devQuiet, "day")}`, { kind: "openDoc", doc: "changelog", label: "Open changelog" });
-      if (mktStale) r.info.push(`Marketing file untouched for ${plural(mktQuiet, "day")}`);
+      const r = make("stale", `No progress logged in the Changelog for ${plural(devQuiet, "day")}`, { kind: "openDoc", doc: "changelog", label: "Open Changelog" });
+      if (mktStale) r.info.push(`Marketing notes untouched for ${plural(mktQuiet, "day")}`);
       return r;
     }
     if (mktStale) {
-      const r = make("stale", `Marketing file untouched for ${plural(mktQuiet, "day")}`, { kind: "openDoc", doc: "marketing", label: "Open marketing engine" });
-      if (devStale) r.info.push(`No changelog entry in ${plural(devQuiet, "day")}`);
+      const r = make("stale", `Marketing notes untouched for ${plural(mktQuiet, "day")}`, { kind: "openDoc", doc: "marketing", label: "Open Marketing Engine" });
+      if (devStale) r.info.push(`No progress logged in the Changelog for ${plural(devQuiet, "day")}`);
       return r;
     }
     // Early warning: one day before it would turn Stale.
-    if (devQuiet === th.staleDays - 1) base.info.push("Stale tomorrow without a changelog entry");
-    else if (mktQuiet === th.staleDays - 1) base.info.push("Stale tomorrow without a marketing edit");
-    return make("healthy", `Changelog ${relOr(p.lastChangelogDate, today, "none yet")} · marketing edited ${relOr(p.marketingTouched, today, "not yet")}`, null);
+    if (devQuiet === th.staleDays - 1) base.info.push("Goes quiet tomorrow without a Changelog entry");
+    else if (mktQuiet === th.staleDays - 1) base.info.push("Goes quiet tomorrow without a marketing edit");
+    return make("healthy", `Progress logged ${relOr(p.lastChangelogDate, today, "not yet")} · marketing edited ${relOr(p.marketingTouched, today, "not yet")}`, null);
   } else {
     const launchDay = addDays(p.cycleStart as string, 13);
     const postRef = laterDate(p.lastSocialPostDate, launchDay) as string;
@@ -115,12 +115,12 @@ export function computeStatus(p: ProductSnapshot, th: Thresholds, today: string,
       return make("stale", why, { kind: "postedToday", label: "Posted today" });
     }
     if (th.staleDevAfterLaunchDays !== null && devQuiet >= th.staleDevAfterLaunchDays) {
-      return make("stale", `No dev activity in ${plural(devQuiet, "day")}`, { kind: "openDoc", doc: "changelog", label: "Open changelog" });
+      return make("stale", `No developer progress logged for ${plural(devQuiet, "day")}`, { kind: "openDoc", doc: "changelog", label: "Open Changelog" });
     }
-    if (devQuiet >= th.staleDays) base.info.push(`Dev quiet ${devQuiet}d`);
-    if (postQuiet === th.staleDays - 1) base.info.push("Stale tomorrow without a post");
+    if (devQuiet >= th.staleDays) base.info.push(`Developer quiet ${devQuiet} days (normal after launch: bug fixes only)`);
+    if (postQuiet === th.staleDays - 1) base.info.push("Goes quiet tomorrow without a post");
     // 4. Healthy
-    return make("healthy", `Posted ${relOr(p.lastSocialPostDate, today, "not yet")} · changelog ${relOr(p.lastChangelogDate, today, "none yet")}`, null);
+    return make("healthy", `Posted ${relOr(p.lastSocialPostDate, today, "not yet")} · progress logged ${relOr(p.lastChangelogDate, today, "not yet")}`, null);
   }
 }
 

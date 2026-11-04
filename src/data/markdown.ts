@@ -128,3 +128,38 @@ export function plainText(s: string): string {
     .replace(/`/g, "")
     .trim();
 }
+
+export interface ChecklistLine {
+  /** Index in the note's lines. */
+  index: number;
+  raw: string;
+  indent: number;
+  checked: boolean;
+  /** Text after the checkbox, plain (no link syntax). */
+  text: string;
+  /** Text after the checkbox, as written. */
+  source: string;
+  /** Nearest heading above. */
+  heading: string;
+}
+
+/** Every "- [ ]" / "- [x]" line, with its heading and indent level (tabs or 2+ spaces = nested). */
+export function checklistLines(body: string): ChecklistLine[] {
+  const out: ChecklistLine[] = [];
+  let heading = "";
+  let inFence = false;
+  body.split(/\r?\n/).forEach((line, index) => {
+    if (FENCE.test(line)) inFence = !inFence;
+    if (inFence) return;
+    const h = HEADING.exec(line);
+    if (h) {
+      heading = h[2].trim();
+      return;
+    }
+    const m = /^(\s*)[-*+]\s+\[([ xX])\]\s?(.*)$/.exec(line);
+    if (!m) return;
+    const indent = m[1].replace(/\t/g, "  ").length >= 2 ? 1 : 0;
+    out.push({ index, raw: line, indent, checked: m[2] !== " ", text: plainText(m[3].replace(/\*\*/g, "")), source: m[3], heading });
+  });
+  return out;
+}

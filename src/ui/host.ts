@@ -2,12 +2,27 @@
 // the browser preview implements it with fake data.
 
 import { NewSprintInput } from "../data/templates";
-import { DocKey, ProductSnapshot } from "../data/types";
+import { DocKey, ProductSnapshot, Role } from "../data/types";
 
 export type Undo = () => Promise<void>;
 
+export interface Prefs {
+  /** Who uses this device: sets the default quest filter. */
+  role: Role;
+  /** The one-time "How to read this page" card was dismissed. */
+  guideSeen: boolean;
+}
+
 export interface Host {
   version: string;
+  prefs: Prefs;
+  savePrefs(p: Partial<Prefs>): Promise<void>;
+  /** Ticks or unticks one checklist line in a note (exact line, or the start of the item text). */
+  tickLine(path: string, match: { line?: string; textStart?: string }, checked: boolean): Promise<Undo>;
+  /** Sets a yes/no field like signed_off_dev. */
+  setFlag(p: ProductSnapshot, doc: DocKey, key: string, value: boolean): Promise<Undo>;
+  /** Sets several text fields in one note (e.g. all social handles). */
+  setFields(p: ProductSnapshot, doc: DocKey, values: Record<string, string>): Promise<Undo>;
   openDoc(p: ProductSnapshot, doc: DocKey, heading?: string): void;
   openPath(path: string): void;
   /** Sets building + cycle_start=today + gate_date=+27 in all 6 files. Throws if another sprint is active. */

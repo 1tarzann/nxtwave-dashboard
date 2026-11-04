@@ -10,6 +10,7 @@ import { renderHome } from "./home";
 import { Host, Undo } from "./host";
 import { countUp, enter, reducedMotion, replayClass, slideIndicator, zoomFrom } from "./motion";
 import { renderProduct } from "./product";
+import { openHelp } from "./help";
 import { confirmStartDay1 } from "./sheets";
 
 export type Tab = "overview" | "marketing" | "dev";
@@ -28,6 +29,9 @@ export class Memory {
   tabBox: { name: string; box: { left: number; width: number } } | null = null;
   lastTabKey = "";
   drawers = new Set<string>();
+  /** Last known done/open state per quest, to celebrate a quest the moment it finishes. */
+  questDone = new Map<string, boolean>();
+  questFilter: "all" | "dev" | "marketing" | null = null;
 }
 
 export interface ButtonOpts {
@@ -56,12 +60,15 @@ export interface Ctx {
   flashCls(key: string): string | null;
   openDoc(p: ProductSnapshot, doc: DocKey, heading?: string): void;
   go(route: Route, from?: Element | null): void;
+  /** Quest filter: what this device's person picked, else their role from Settings. */
+  questFilter(): "all" | "dev" | "marketing";
+  setQuestFilter(f: "all" | "dev" | "marketing"): void;
 }
 
 const TABS: { id: Tab; label: string; key: string }[] = [
   { id: "overview", label: "📊 Overview", key: "1" },
   { id: "marketing", label: "📈 Marketing side", key: "2" },
-  { id: "dev", label: "💻 Dev side", key: "3" },
+  { id: "dev", label: "💻 Developer side", key: "3" },
 ];
 
 export class DashboardApp {
@@ -156,6 +163,10 @@ export class DashboardApp {
       flashCls: (key) => ((this.mem.flash.get(key) ?? 0) > Date.now() ? "nx-flash" : null),
       openDoc: (p, doc, heading) => this.host.openDoc(p, doc, heading),
       go: (r, from) => this.go(r, from),
+      questFilter: () => this.mem.questFilter ?? (this.host.prefs.role === "both" ? "all" : this.host.prefs.role),
+      setQuestFilter: (f) => {
+        this.mem.questFilter = f;
+      },
     };
 
     const route = this.route;
@@ -234,6 +245,9 @@ export class DashboardApp {
       right.append(h("span", { class: "nx-today" }, ctx.data.today ? new Date(ctx.data.today + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) : ""));
     }
 
+    const help = h("button", { class: "nx-help-btn nx-pressable", type: "button", title: "Colors, pages, words and shortcuts explained" }, "? Help");
+    help.addEventListener("click", () => openHelp(ctx));
+    right.append(help);
     const bar = h("header", { class: "nx-topbar" }, h("div", { class: "nx-topbar-row" }, left, right));
 
     if (product && this.route.level === "product") {
@@ -334,7 +348,7 @@ export class DashboardApp {
     }
     if (a.kind === "openDoc" && a.doc) {
       const doc = a.doc;
-      return this.button({ id, label: `${a.label} →`, variant: "ghost", onClick: () => this.host.openDoc(p, doc, a.heading) });
+      return this.button({ id, label: `${a.label} →`, variant: "ghost", title: "Opens the note at the right spot", onClick: () => this.host.openDoc(p, doc, a.heading) });
     }
     return h("span");
   }

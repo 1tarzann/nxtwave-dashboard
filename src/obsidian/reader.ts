@@ -2,6 +2,7 @@
 
 import { App, TFile, TFolder } from "obsidian";
 import { toIsoDate } from "../data/dates";
+import { parseChecklistNote } from "../data/company";
 import { buildSnapshot } from "../data/snapshot";
 import { parseThresholds } from "../data/thresholds";
 import { DashboardData, DOC_FILES, DOC_ORDER, DocKey, IdeaNote, LinkRef, RawDoc } from "../data/types";
@@ -76,5 +77,14 @@ export async function readDashboard(app: App, hq: string, today = toIsoDate(Date
     title: f.basename.replace(/_/g, " "),
   }));
 
-  return { hqRoot: hq, today, products, thresholds, archive, ideas, categories };
+  const note = async (rel: string) => {
+    const f = app.vault.getAbstractFileByPath(join(hq, rel));
+    return f instanceof TFile ? { path: f.path, body: await app.vault.cachedRead(f) } : null;
+  };
+  const setupNote = await note("SETUP_CHECKLIST.md");
+  const bmNote = await note("04_Company_Ops/NXTWAVE_Business_Model.md");
+  const setup = setupNote ? parseChecklistNote(setupNote.body, setupNote.path) : [];
+  const businessModel = bmNote ? parseChecklistNote(bmNote.body, bmNote.path, "Current status") : [];
+
+  return { hqRoot: hq, today, products, thresholds, archive, ideas, categories, setup, businessModel };
 }

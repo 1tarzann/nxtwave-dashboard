@@ -31,6 +31,8 @@ export interface LedgerRow {
   signups: number;
   sales: number;
   revenue: number;
+  /** Someone typed at least one number in this row. */
+  filled: boolean;
 }
 
 export interface OrganicRow {
@@ -80,7 +82,9 @@ export interface ProductSnapshot {
   gateDate: string | null;
   productType: string;
   repoUrl: string;
-  handles: { tiktok: string; instagram: string; youtube: string };
+  handles: { tiktok: string; instagram: string; youtube: string; x: string };
+  /** The marketing note has an x: field (partners add it to the template when X is approved). */
+  hasXField: boolean;
   lastSocialPostDate: string | null;
   /** YYYY-MM-DD of the last edit to 2_Marketing_Engine (file mtime or last_updated, whichever is later). */
   marketingTouched: string | null;
@@ -101,6 +105,10 @@ export interface ProductSnapshot {
   backlog: BacklogCounts;
   brandKit: { filled: number; total: number };
   launchChecks: { done: number; total: number };
+  /** Every "- [ ]" line in 4_Launch_Checklist, in order. */
+  launchItems: { text: string; checked: boolean }[];
+  /** Day-28 vote cells ("Scale" / "Kill" / ""). */
+  votes: { dev: string; marketing: string };
   signedOffDev: boolean;
   signedOffMarketing: boolean;
   blockingIssuesOpen: number;
@@ -175,8 +183,28 @@ export interface IdeaNote {
   mtime: number;
 }
 
+/** One "- [ ]" line in a company note (SETUP_CHECKLIST, Business Model §8). */
+export interface ChecklistItem {
+  /** Plain text without the checkbox, tags or link syntax. */
+  text: string;
+  /** The exact line as written, used to tick it later. */
+  raw: string;
+  checked: boolean;
+  /** Nearest heading above the line, e.g. "P1: company setup". */
+  group: string;
+  owner: Role;
+  /** Indented lines under this item. */
+  details: string[];
+  path: string;
+}
+
+export type Role = "dev" | "marketing" | "both";
+
 export interface DashboardData {
   hqRoot: string;
+  /** Open + done items from SETUP_CHECKLIST.md and Business Model §8. */
+  setup: ChecklistItem[];
+  businessModel: ChecklistItem[];
   categories: LinkRef[];
   today: string;
   products: ProductSnapshot[];

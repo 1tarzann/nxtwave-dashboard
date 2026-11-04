@@ -13,13 +13,22 @@ An Obsidian plugin for a 2-partner sprint vault: color-coded product squares, a 
 - **Product hub:** status banner with its fix button, last post / last dev update, spend · views · clicks · revenue, the 28-day timeline, connection pills, social stats, and doors to the Marketing and Dev sides.
 - **Buttons that write:** Start Day 1, Posted today, Connect handle / repo, New Sprint wizard. Each edits only the frontmatter lines it names and offers Undo for 5 seconds.
 
+## Quests
+Jobs only a person can do (logins, filming, payments, signatures, votes), each tagged **FOR DEV**, **FOR MARKETING** or **FOR BOTH**, with why it matters, why Claude can't do it, and where to do it.
+- **Home:** open items from `SETUP_CHECKLIST.md` (grouped P0–P3) plus Business Model §8 items the checklist doesn't cover. Add `#dev` or `#marketing` to a checklist line to assign it. **Mark done** ticks the line (with Undo).
+- **Each product:** sprint quests from the 28-day plan (accounts, videos, checkout, break-it test, test purchase, publish, sign-offs, first $100, daily post and numbers, votes). They check themselves off when the work shows up in the notes.
+- Settings → **Who uses this device?** sets which quests show first.
+
+## Where each number comes from
+Every number carries a tag: **⏳ Not yet** (nothing to measure yet), **✍️ Needs you** (who and where), **✍️ Typed by**, or **🔌 Auto** (connected service, next release). Every section has an ⓘ explaining what it is, why it's there, where it comes from and who fills it. **? Help** (top right) has the color key, pages, glossary and shortcuts.
+
 ## Status rules
 | Color | When |
 |---|---|
-| Maroon | `verdict: kill`, or from day 21: spend ≥ `kill_spend_no_sales` with 0 sales/sign-ups, or click rate < `kill_min_ctr` |
-| Amber | Day 14 (launch gate), day 28 (verdict), day 35 if extended, or verdict overdue |
-| Pink-red | Days 1–14: no changelog entry or no edit to the marketing file for `stale_days`. Days 15+: no social post for `stale_days` |
-| Emerald | None of the above |
+| Maroon · KILL SIGNAL | `verdict: kill`, or from day 21: spend ≥ `kill_spend_no_sales` with 0 sales/sign-ups, or click rate < `kill_min_ctr` |
+| Amber · DECISION DAY | Day 14 (launch gate), day 28 (verdict), day 35 if extended, or verdict overdue |
+| Pink-red · GONE QUIET | Days 1–14: no changelog entry or no edit to the marketing file for `stale_days`. Days 15+: no social post for `stale_days` |
+| Emerald · ON TRACK | None of the above |
 
 Thresholds are read from the frontmatter of `00_Global_System/Launch_Framework.md` (partners add them):
 ```yaml

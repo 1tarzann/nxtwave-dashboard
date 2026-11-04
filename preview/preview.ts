@@ -1,13 +1,15 @@
 // Browser harness: renders the real UI with fake products, plus a Simulate panel that triggers
 // every microinteraction (live partner edits, new revenue, failed actions, reduced motion, dark mode).
 
+import { parseChecklistNote } from "../src/data/company";
 import { addDays, toIsoDate } from "../src/data/dates";
 import { buildSnapshot } from "../src/data/snapshot";
 import { DEFAULT_THRESHOLDS, DashboardData, LedgerRow, ProductSnapshot } from "../src/data/types";
 import { DashboardApp } from "../src/ui/app";
 import { applyMotionMode } from "../src/ui/motion";
 import { h } from "../src/ui/dom";
-import { Host, Undo } from "../src/ui/host";
+import { Host, Prefs, Undo } from "../src/ui/host";
+import { setChecklistLine } from "../src/data/templates";
 
 const today = toIsoDate(Date.now());
 const startFor = (day: number) => addDays(today, -(day - 1));
@@ -26,17 +28,25 @@ function mk(name: string, over: Partial<ProductSnapshot>): ProductSnapshot {
     ],
     brandKit: { filled: 2, total: 6 },
     launchChecks: { done: 4, total: 13 },
+    launchItems: [
+      { text: "Core mechanics 1–3 work end-to-end", checked: true },
+      { text: "Version tagged in 5_Changelog", checked: false },
+      { text: "Build or store listing is live", checked: false },
+      { text: "Checkout works with a real test purchase (Stripe or platform)", checked: false },
+    ],
     milestones: { done: 1, total: 4 },
     ...over,
   };
 }
 
 const ledger = (rows: [number, number, number, number, number, number][]): LedgerRow[] =>
-  rows.map(([day, spend, impressions, clicks, sales, revenue]) => ({ day, date: addDays(startFor(day), 0) === today ? today : "", spend, impressions, clicks, signups: sales, sales, revenue }));
+  rows.map(([day, spend, impressions, clicks, sales, revenue]) => ({ day, date: "", spend, impressions, clicks, signups: sales, sales, revenue, filled: true }));
 
 type Scenario = { label: string; active: Partial<ProductSnapshot> };
 const SCENARIOS: Record<string, Scenario> = {
   unstarted: { label: "Clock not started (today's real state)", active: { status: "building", cycleStart: null } },
+  prelaunch: { label: "Day 3 · nothing filled yet (pre-launch)", active: { status: "building", cycleStart: startFor(3), lastChangelogDate: addDays(today, -1), marketingTouched: today } },
+  day16empty: { label: "Day 16 · launched, nothing logged", active: { status: "watching", cycleStart: startFor(16), lastSocialPostDate: addDays(today, -1), lastChangelogDate: addDays(today, -2), handles: { tiktok: "@demo_tool", instagram: "@demo.tool", youtube: "@demotool", x: "" }, stripeLink: "https://buy.stripe.com/test", backlog: { total: 4, scripted: 0, recorded: 0, edited: 0, scheduled: 4 } } },
   build: {
     label: "Day 9 · building, healthy",
     active: { status: "building", cycleStart: startFor(9), lastChangelogDate: addDays(today, -1), marketingTouched: today, currentVersion: "0.2.0", changelog: [{ version: "0.2.0", date: addDays(today, -1), added: ["Wet/dry mix knob"], fixed: ["Audio buffer crash"], removed: [] }], mechanics: ["Input dry vocal", "Real-time EQ + compression chain", "Wet/dry knob + license check"], pitch: "Auto-mixes rap vocals in one knob", competitorsFilled: 3, hooksFilled: 2, backlog: { total: 6, scripted: 2, recorded: 1, edited: 1, scheduled: 2 } },
@@ -50,7 +60,7 @@ const SCENARIOS: Record<string, Scenario> = {
       cycleStart: startFor(20),
       lastSocialPostDate: today,
       lastChangelogDate: addDays(today, -6),
-      handles: { tiktok: "@demo_tool", instagram: "@demo.tool", youtube: "" },
+      handles: { tiktok: "@demo_tool", instagram: "@demo.tool", youtube: "", x: "" },
       repoUrl: "https://github.com/example/demo-tool",
       stripeLink: "https://buy.stripe.com/test",
       ledger: ledger([[15, 0, 0, 0, 0, 0], [16, 20, 3000, 24, 0, 0], [17, 25, 4200, 40, 1, 19.99], [18, 30, 5100, 51, 2, 39.98], [19, 25, 4000, 38, 1, 19.99], [20, 0, 0, 0, 1, 24]]),
@@ -65,6 +75,21 @@ const SCENARIOS: Record<string, Scenario> = {
   kill: { label: "Day 22 · kill signal ($120, 0 sales)", active: { status: "watching", cycleStart: startFor(22), lastSocialPostDate: today, totalSpendFm: 120, ledger: ledger([[16, 40, 6000, 20, 0, 0], [17, 40, 6000, 18, 0, 0], [18, 40, 5000, 15, 0, 0]]) } },
   verdict: { label: "Day 28 · verdict day", active: { status: "watching", cycleStart: startFor(28), lastSocialPostDate: today, ledger: ledger([[16, 50, 6000, 80, 3, 59.97]]) } },
 };
+
+const SETUP = [
+  "## P0: make the vault work for both partners",
+  "- [x] Turn on sharing for the HQ folder",
+  "- [ ] Partner installs the **Kanban** plugin #marketing",
+  "- [ ] Both partners install BRAT",
+  "\t- Settings → Community plugins → Browse → BRAT",
+  "## P1: company setup",
+  "- [ ] Business phone number",
+  "- [ ] EIN (free, IRS website)",
+  "- [ ] Business checking + $500 contribution each",
+  "## P3: system hardening (later)",
+  "- [ ] Decide where code repos live #dev",
+].join("\n");
+const BUSINESS = ["## 8. Current status", "- [ ] Business phone number", "- [ ] Pick a bookkeeping spreadsheet", "- [x] LLC filed"].join("\n");
 
 let failNext = false;
 let scenario = new URLSearchParams(location.search).get("s") ?? "watch";
@@ -86,6 +111,8 @@ function build(): DashboardData {
       { path: "04_Company_Ops/Categories/Audio_Plugins", title: "Audio Plugins" },
       { path: "04_Company_Ops/Categories/Roblox_Games", title: "Roblox Games" },
     ],
+    setup: parseChecklistNote(SETUP, "HQ/SETUP_CHECKLIST.md"),
+    businessModel: parseChecklistNote(BUSINESS, "HQ/04_Company_Ops/NXTWAVE_Business_Model.md", "Current status"),
     products: [
       mk("Demo_Tool", { productType: "VST audio plugin", category: { path: "04_Company_Ops/Categories/Audio_Plugins", title: "Audio Plugins" }, ...sc.active }),
       mk("Sample_Game", { status: "queued", productType: "Roblox game", category: { path: "04_Company_Ops/Categories/Roblox_Games", title: "Roblox Games" } }),
@@ -111,8 +138,38 @@ async function act(name: string, patch: Partial<ProductSnapshot>): Promise<Undo>
   return async () => update(name, prev);
 }
 
+const prefs: Prefs = { role: (new URLSearchParams(location.search).get("role") as Prefs["role"]) ?? "both", guideSeen: new URLSearchParams(location.search).has("noguide") };
 const host: Host = {
   version: "preview",
+  prefs,
+  savePrefs: async (p) => {
+    Object.assign(prefs, p);
+  },
+  tickLine: async (path, match, checked) => {
+    await wait(350);
+    if (failNext) {
+      failNext = false;
+      renderSim();
+      throw new Error("Couldn't find that line in the note any more. Open the note and tick it by hand.");
+    }
+    if (path.endsWith("SETUP_CHECKLIST.md")) {
+      const flip = (to: boolean, line: string) => {
+        data = { ...data, setup: data.setup.map((i) => (i.raw === line ? { ...i, checked: to, raw: setChecklistLine(i.raw, { line: i.raw }, to) } : i)) };
+        app.setData(data);
+      };
+      const line = match.line ?? "";
+      flip(checked, line);
+      const after = setChecklistLine(line, { line }, checked);
+      return async () => flip(!checked, after);
+    }
+    const p = data.products.find((x) => path.startsWith(x.folder))!;
+    const start = (match.textStart ?? "").toLowerCase();
+    const set = (to: boolean) => update(p.name, { launchItems: data.products.find((x) => x.name === p.name)!.launchItems.map((i) => (i.text.toLowerCase().startsWith(start) ? { ...i, checked: to } : i)) });
+    set(checked);
+    return async () => set(!checked);
+  },
+  setFlag: (p, _doc, key, value) => act(p.name, key === "signed_off_dev" ? { signedOffDev: value } : { signedOffMarketing: value }),
+  setFields: (p, _doc, values) => act(p.name, { handles: { ...p.handles, ...values } }),
   openDoc: (p, doc, heading) => app.toast(`Would open ${p.name}/${doc}${heading ? ` # ${heading}` : ""}`),
   openPath: (path) => app.toast(`Would open ${path}`),
   startDay1: (p) => act(p.name, { status: "building", cycleStart: today, gateDate: addDays(today, 27) }),
@@ -179,8 +236,8 @@ function renderSim() {
       const p = data.products.find((x) => x.name === "Demo_Tool")!;
       const day = p.cycleStart ? Math.round((Date.parse(today) - Date.parse(p.cycleStart)) / 86400000) + 1 : 15;
       const rows = p.ledger.filter((r) => r.day !== day);
-      const cur = p.ledger.find((r) => r.day === day) ?? { day, date: today, spend: 0, impressions: 0, clicks: 0, signups: 0, sales: 0, revenue: 0 };
-      update("Demo_Tool", { ledger: [...rows, { ...cur, date: today, sales: cur.sales + 1, revenue: cur.revenue + 24 }] });
+      const cur = p.ledger.find((r) => r.day === day) ?? { day, date: today, spend: 0, impressions: 0, clicks: 0, signups: 0, sales: 0, revenue: 0, filled: true };
+      update("Demo_Tool", { ledger: [...rows, { ...cur, date: today, filled: true, sales: cur.sales + 1, revenue: cur.revenue + 24 }] });
     }),
     btn("Partner: sign off launch", () => update("Demo_Tool", { signedOffMarketing: true })),
     h("label", null, failBox, "fail next action"),
