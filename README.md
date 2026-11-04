@@ -8,6 +8,30 @@ An Obsidian plugin for a 2-partner sprint vault: color-coded product squares, a 
 3. Settings → BRAT → turn on **Auto-update plugins at startup**.
 4. Settings → Community plugins → enable **NXTWAVE Dashboard**. Open it from the ribbon icon or Cmd/Ctrl+P → "NXTWAVE Dashboard: Open dashboard".
 
+## What it shows
+- **Home:** every product as a square. Color + icon + word: ✕ KILL SIGNAL (maroon), ⚑ GATE TODAY (amber), ⏸ STALE (pink-red), ✓ HEALTHY (emerald), grey for queued / clock not started. A "Do this next" banner names the single most urgent fix.
+- **Product hub:** status banner with its fix button, last post / last dev update, spend · views · clicks · revenue, the 28-day timeline, connection pills, social stats, and doors to the Marketing and Dev sides.
+- **Buttons that write:** Start Day 1, Posted today, Connect handle / repo, New Sprint wizard. Each edits only the frontmatter lines it names and offers Undo for 5 seconds.
+
+## Status rules
+| Color | When |
+|---|---|
+| Maroon | `verdict: kill`, or from day 21: spend ≥ `kill_spend_no_sales` with 0 sales/sign-ups, or click rate < `kill_min_ctr` |
+| Amber | Day 14 (launch gate), day 28 (verdict), day 35 if extended, or verdict overdue |
+| Pink-red | Days 1–14: no changelog entry or no edit to the marketing file for `stale_days`. Days 15+: no social post for `stale_days` |
+| Emerald | None of the above |
+
+Thresholds are read from the frontmatter of `00_Global_System/Launch_Framework.md` (partners add them):
+```yaml
+kill_spend_no_sales: 100
+kill_min_ctr:                   # empty = click-rate check off
+stale_days: 3
+stale_dev_after_launch_days:    # empty = a quiet developer after launch is info only
+```
+
+## Settings
+**Animations:** Follow system (default) / Always animate / Reduced motion. With macOS Reduce Motion on, "Follow system" keeps check marks, toasts and colors but drops the movement.
+
 ## Release (maintainers)
 ```
 npm run bump -- 0.2.0

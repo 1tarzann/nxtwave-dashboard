@@ -1,0 +1,138 @@
+// The real write actions. Every write goes through app.vault.process (atomic read-modify-write inside
+// Obsidian, so Relay sees a normal edit) and changes only the frontmatter lines it names.
+
+import { App, Notice, TFile, WorkspaceLeaf } from "obsidian";
+import { addDays, toIsoDate } from "../data/dates";
+import { activeProducts } from "../data/status";
+import { buildHubNote, fillTemplate, NewSprintInput, readFrontmatterRaw, sanitizeName, setFrontmatterRaw, TEMPLATE_FILES, yamlValue } from "../data/templates";
+import { DashboardData, DOC_FILES, DOC_ORDER, DocKey, ProductSnapshot } from "../data/types";
+import { Host, Undo } from "../ui/host";
+import { join } from "./reader";
+
+type Patch = Record<string, string>;
+
+export class ObsidianHost implements Host {
+  private sideLeaf: WorkspaceLeaf | null = null;
+
+  constructor(
+    private app: App,
+    readonly version: string,
+    private getData: () => DashboardData | null,
+    private ownLeaf: () => WorkspaceLeaf,
+  ) {}
+
+  private today(): string {
+    return toIsoDate(Date.now());
+  }
+
+  private file(path: string | null | undefined): TFile {
+    const f = path ? this.app.vault.getAbstractFileByPath(path) : null;
+    if (!(f instanceof TFile)) throw new Error(`Can't find ${path ?? "that note"}. Was it renamed?`);
+    return f;
+  }
+
+  /** Applies patches to several files and returns an Undo that restores the exact previous lines. */
+  private async patch(changes: { path: string; values: Patch }[]): Promise<Undo> {
+    const before: { path: string; values: Patch }[] = [];
+    for (const c of changes) {
+      const f = this.file(c.path);
+      await this.app.vault.process(f, (data) => {
+        const prev = readFrontmatterRaw(data);
+        before.push({ path: c.path, values: Object.fromEntries(Object.keys(c.values).map((k) => [k, prev[k] ?? ""])) });
+        return setFrontmatterRaw(data, c.values);
+      });
+    }
+    return async () => {
+      for (const b of before) {
+        await this.app.vault.process(this.file(b.path), (data) => setFrontmatterRaw(data, b.values));
+      }
+    };
+  }
+
+  openPath(path: string): void {
+    const f = this.app.vault.getAbstractFileByPath(path);
+    if (!(f instanceof TFile)) {
+      new Notice(`Can't find ${path}`);
+      return;
+    }
+    void this.sidePane().openFile(f);
+  }
+
+  openDoc(p: ProductSnapshot, doc: DocKey, heading?: string): void {
+    const path = p.paths[doc];
+    const f = path ? this.app.vault.getAbstractFileByPath(path) : null;
+    if (!(f instanceof TFile)) {
+      new Notice(`${p.displayName} has no ${DOC_FILES[doc]} note.`);
+      return;
+    }
+    let subpath = "";
+    if (heading) {
+      const h = this.app.metadataCache.getFileCache(f)?.headings?.find((x) => x.heading.toLowerCase().includes(heading.toLowerCase()));
+      if (h) subpath = `#${h.heading}`;
+    }
+    const leaf = this.sidePane();
+    this.app.workspace.setActiveLeaf(leaf, { focus: true });
+    void this.app.workspace.openLinkText(f.path + subpath, "", false);
+  }
+
+  /** Notes open in one reusable pane next to the dashboard instead of piling up new splits. */
+  private sidePane(): WorkspaceLeaf {
+    let alive = false;
+    if (this.sideLeaf) this.app.workspace.iterateAllLeaves((l) => (alive ||= l === this.sideLeaf));
+    if (!alive || !this.sideLeaf || this.sideLeaf === this.ownLeaf()) {
+      this.app.workspace.setActiveLeaf(this.ownLeaf(), { focus: false });
+      this.sideLeaf = this.app.workspace.getLeaf("split", "vertical");
+    }
+    return this.sideLeaf;
+  }
+
+  async startDay1(p: ProductSnapshot): Promise<Undo> {
+    const data = this.getData();
+    const others = data ? activeProducts(data.products).filter((x) => x.name !== p.name) : [];
+    if (others.length) throw new Error(`${others.map((o) => o.displayName).join(", ")} is still active. One sprint at a time: finish its day-28 verdict first.`);
+    const today = this.today();
+    const values: Patch = { sprint_status: "building", cycle_start: today, gate_date: addDays(today, 27), last_updated: today };
+    const paths = [p.hubPath, ...DOC_ORDER.map((k) => p.paths[k])].filter((x): x is string => !!x);
+    return this.patch(paths.map((path) => ({ path, values })));
+  }
+
+  async postedToday(p: ProductSnapshot): Promise<Undo> {
+    const today = this.today();
+    return this.patch([{ path: this.file(p.paths.marketing).path, values: { last_social_post_date: today, last_updated: today } }]);
+  }
+
+  async setField(p: ProductSnapshot, doc: DocKey, key: string, value: string): Promise<Undo> {
+    return this.patch([{ path: this.file(p.paths[doc]).path, values: { [key]: yamlValue(value), last_updated: this.today() } }]);
+  }
+
+  async createSprint(input: NewSprintInput, startNow: boolean): Promise<string> {
+    const data = this.getData();
+    if (!data) throw new Error("The dashboard hasn't loaded the vault yet.");
+    const name = sanitizeName(input.name);
+    if (!name) throw new Error("Give the product a name first.");
+    const active = activeProducts(data.products);
+    if (startNow && active.length) throw new Error(`${active[0].displayName} is still active. One sprint at a time.`);
+    const folderPath = join(data.hqRoot, `02_Active_Sprints/${name}`);
+    if (this.app.vault.getAbstractFileByPath(folderPath)) throw new Error(`02_Active_Sprints/${name} already exists.`);
+
+    // Read every template first, so a missing one fails before anything is created.
+    const templates: Partial<Record<DocKey, string>> = {};
+    for (const k of DOC_ORDER) {
+      const tpl = this.app.vault.getAbstractFileByPath(join(data.hqRoot, `01_Standard_Templates/${TEMPLATE_FILES[k]}`));
+      if (!(tpl instanceof TFile)) throw new Error(`Template ${TEMPLATE_FILES[k]} is missing from 01_Standard_Templates.`);
+      templates[k] = await this.app.vault.read(tpl);
+    }
+
+    const today = this.today();
+    await this.app.vault.createFolder(folderPath);
+    await this.app.vault.create(`${folderPath}/${name}_Hub.md`, buildHubNote(input, today, startNow, active[0]?.displayName ?? null));
+    for (const k of DOC_ORDER) {
+      await this.app.vault.create(`${folderPath}/${DOC_FILES[k]}.md`, fillTemplate(k, templates[k] as string, input, today, startNow));
+    }
+    return name;
+  }
+
+  async copy(text: string): Promise<void> {
+    await navigator.clipboard.writeText(text);
+  }
+}

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NXTWAVE Dashboard preview</title>
+<link rel="stylesheet" href="/styles.css">
+<style>
+  /* Stand-ins for Obsidian's theme variables. */
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 15px; }
+  body.theme-light { --background-primary: #fcfcfb; --background-secondary: #f3f3f0; --background-modifier-border: rgba(11,11,11,.12); --text-normal: #0b0b0b; --text-muted: #52514e; --text-faint: #898781; --interactive-accent: #2a78d6; background: #fcfcfb; color-scheme: light; }
+  body.theme-dark { --background-primary: #1a1a19; --background-secondary: #242422; --background-modifier-border: rgba(255,255,255,.12); --text-normal: #f0efec; --text-muted: #c3c2b7; --text-faint: #898781; --interactive-accent: #3987e5; background: #1a1a19; color-scheme: dark; }
+  /* Obsidian's own default control styles (copied from app.css), so the preview fights the same cascade. */
+  button { display: inline-flex; align-items: center; justify-content: center; font-size: 13px; border-radius: 4px; border: 0; padding: 4px 12px; height: 30px; font-weight: 400; font-family: inherit; outline: none; white-space: nowrap; }
+  button:not(.clickable-icon) { background-color: #e3e3e3; box-shadow: 0 1px 2px rgba(0,0,0,.35); }
+  button:not(.clickable-icon):hover { background-color: #d2d2d2; box-shadow: 0 1px 3px rgba(0,0,0,.45); }
+  input[type='text'] { background: #ffffff; border: 1px solid #b0b0b0; height: 30px; padding: 0 8px; font-size: 13px; border-radius: 4px; }
+  input[type='text']:focus { border-color: #888; box-shadow: 0 0 0 2px #aaa; }
+  #sim { position: fixed; left: 0; right: 0; bottom: 0; z-index: 100; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 12px; background: #111; color: #eee; font-size: 12px; }
+  #sim button, #sim select { font: inherit; padding: 4px 8px; border-radius: 6px; border: 1px solid #555; background: #222; color: #eee; cursor: pointer; }
+  #sim label { display: inline-flex; gap: 4px; align-items: center; }
+  #app { height: calc(100vh - 44px); }
+</style>
+</head>
+<body class="theme-light">
+<div id="app"></div>
+<div id="sim"></div>
+<script src="/preview/dist/preview.js"></script>
+</body>
+</html>
