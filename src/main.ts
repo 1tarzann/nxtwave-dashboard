@@ -1,4 +1,5 @@
-import { App, debounce, ItemView, Plugin, PluginSettingTab, Setting, TAbstractFile, WorkspaceLeaf } from "obsidian";
+import { App, debounce, ItemView, Notice, Plugin, PluginSettingTab, Setting, TAbstractFile, WorkspaceLeaf } from "obsidian";
+import { runDoctor, runLogin } from "./obsidian/kit";
 import { applyMotionMode, MotionMode } from "./ui/motion";
 import { toIsoDate } from "./data/dates";
 import { DashboardData, Role } from "./data/types";
@@ -34,10 +35,18 @@ class DashboardView extends ItemView {
     this.contentEl.addClass("nx-view-content");
     const s = this.plugin.settings;
     const prefs = { role: s.role, guideSeen: s.guideSeen };
-    const host = new ObsidianHost(this.app, this.plugin.manifest.version, () => this.data, () => this.leaf, prefs, async (p) => {
-      Object.assign(this.plugin.settings, p);
-      await this.plugin.saveData(this.plugin.settings);
-    });
+    const host = new ObsidianHost(
+      this.app,
+      this.plugin.manifest.version,
+      () => this.data,
+      () => this.leaf,
+      prefs,
+      async (p) => {
+        Object.assign(this.plugin.settings, p);
+        await this.plugin.saveData(this.plugin.settings);
+      },
+      () => ({ kitPath: this.plugin.settings.kitPath, nodePath: this.plugin.settings.nodePath, minGapHours: this.plugin.settings.minGapHours }),
+    );
     this.dash = new DashboardApp(this.contentEl, host);
 
     const reload = debounce(() => void this.reload(), 250, true);
@@ -95,12 +104,66 @@ interface Settings {
   motion: MotionMode;
   role: Role;
   guideSeen: boolean;
+  kitPath: string;
+  nodePath: string;
+  minGapHours: number;
 }
-const DEFAULTS: Settings = { motion: "system", role: "both", guideSeen: false };
+const DEFAULTS: Settings = { motion: "system", role: "both", guideSeen: false, kitPath: "~/Developer/social-scrape-kit", nodePath: "", minGapHours: 6 };
 
 class DashboardSettingTab extends PluginSettingTab {
   constructor(app: App, private plugin: NxtwaveDashboard) {
     super(app, plugin);
+  }
+
+  /** Social stats refresh (Instagram + TikTok) through the scrape kit. Manual only. */
+  private kitSettings(containerEl: HTMLElement): void {
+    const s = this.plugin.settings;
+    const save = async () => {
+      await this.plugin.saveData(s);
+      this.plugin.refreshViews();
+    };
+    containerEl.createEl("h3", { text: "Social stats refresh (Instagram + TikTok)" });
+    containerEl.createEl("p", {
+      cls: "setting-item-description",
+      text: "Uses the scrape kit on this computer. It only runs when someone presses “Refresh social stats” on a product page; nothing runs on a timer. Set this up on one computer only.",
+    });
+    new Setting(containerEl)
+      .setName("Scrape kit folder")
+      .setDesc("Where the social-scrape-kit folder is on this computer.")
+      .addText((t) => t.setPlaceholder("~/Developer/social-scrape-kit").setValue(s.kitPath).onChange(async (v) => { s.kitPath = v.trim(); await save(); }));
+    new Setting(containerEl)
+      .setName("Node.js location (optional)")
+      .setDesc("Leave empty to find it automatically.")
+      .addText((t) => t.setPlaceholder("/opt/homebrew/bin/node").setValue(s.nodePath).onChange(async (v) => { s.nodePath = v.trim(); await save(); }));
+    new Setting(containerEl)
+      .setName("Warn if refreshed again within (hours)")
+      .setDesc("Refreshing often makes the apps more likely to flag an account. The dashboard asks before refreshing sooner than this.")
+      .addText((t) => t.setValue(String(s.minGapHours)).onChange(async (v) => { const n = Number(v); if (Number.isFinite(n) && n >= 0) { s.minGapHours = n; await save(); } }));
+    new Setting(containerEl)
+      .setName("Check setup")
+      .setDesc("Checks that the kit, Node.js and its browser are ready.")
+      .addButton((b) =>
+        b.setButtonText("Check").onClick(async () => {
+          b.setDisabled(true);
+          new Notice((await runDoctor(s)) || "No answer from the kit.", 10000);
+          b.setDisabled(false);
+        }),
+      );
+    for (const platform of ["tiktok", "instagram"] as const) {
+      const label = platform === "tiktok" ? "TikTok" : "Instagram";
+      new Setting(containerEl)
+        .setName(`Log in to ${label} (one time)`)
+        .setDesc(`Opens a browser window: sign in to the product's ${label} account by hand (2FA is fine). It closes by itself once you're in. Claude never types logins.`)
+        .addButton((b) =>
+          b.setButtonText(`Log in to ${label}`).onClick(async () => {
+            b.setDisabled(true);
+            new Notice(`Sign in to ${label} in the window that opened.`, 8000);
+            const err = await runLogin(s, platform);
+            new Notice(err ?? `${label} login saved on this computer.`, 8000);
+            b.setDisabled(false);
+          }),
+        );
+    }
   }
   display(): void {
     const { containerEl } = this;
@@ -118,6 +181,7 @@ class DashboardSettingTab extends PluginSettingTab {
             this.plugin.refreshViews();
           }),
       );
+    this.kitSettings(containerEl);
     new Setting(containerEl)
       .setName("Show the “How to read this page” card again")
       .addButton((b) =>

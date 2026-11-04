@@ -741,3 +741,7 @@ body .nx-root .nx-help-list dd { margin: 0; color: var(--nx-muted); }
   body .nx-root .nx-help-list > div { grid-template-columns: 1fr; gap: 2px; }
   body .nx-root .nx-quest-when { margin-left: 0; }
 }
+
+/* ── 0.4: manual social refresh ── */
+body .nx-root .nx-refresh { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 12px; padding: 12px 14px; border-radius: 12px; border: 1px dashed var(--nx-border); }
+body .nx-root .nx-refresh-text { display: flex; flex-direction: column; gap: 2px; flex: 1 1 260px; font-size: 0.9em; }

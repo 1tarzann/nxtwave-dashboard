@@ -223,7 +223,7 @@ export function sprintQuests(p: ProductSnapshot, st: StatusResult, today: string
       owner: "marketing",
       title: "Fill in followers and views for each app",
       why: "Shows which app is actually working, so you know where to post more.",
-      humanOnly: "Needs your login to each app (until the scheduler is connected).",
+      humanOnly: "Needs your login to each app. TikTok and Instagram: press Refresh social stats on the computer with the scrape kit. YouTube: type it in.",
       where: "Analytics and Gate → Free social stats",
       from: 15, to: lastDay, due: 21, group: A,
       done: organicDone,

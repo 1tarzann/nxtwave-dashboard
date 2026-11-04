@@ -6,7 +6,9 @@ import { addDays, toIsoDate } from "../data/dates";
 import { activeProducts } from "../data/status";
 import { buildHubNote, fillTemplate, NewSprintInput, readFrontmatterRaw, sanitizeName, setChecklistLine, setFrontmatterRaw, TEMPLATE_FILES, yamlValue } from "../data/templates";
 import { DashboardData, DOC_FILES, DOC_ORDER, DocKey, ProductSnapshot } from "../data/types";
+import { applySocialStats, newerPostDate, PLATFORM_LABEL, SOCIAL_PLATFORMS, SocialPlatform, SocialStats } from "../data/social";
 import { Host, Prefs, Undo } from "../ui/host";
+import { checkKit, KitSettings, runStats } from "./kit";
 import { join } from "./reader";
 
 type Patch = Record<string, string>;
@@ -21,7 +23,41 @@ export class ObsidianHost implements Host {
     private ownLeaf: () => WorkspaceLeaf,
     readonly prefs: Prefs,
     private persistPrefs: (p: Prefs) => Promise<void>,
+    private kitSettings: () => KitSettings & { minGapHours: number },
   ) {}
+
+  private refreshing = false;
+
+  socialKit(): { ok: boolean; reason: string; minGapHours: number } {
+    const s = this.kitSettings();
+    const c = checkKit(s);
+    return { ok: c.ok, reason: c.reason, minGapHours: s.minGapHours };
+  }
+
+  async refreshSocial(p: ProductSnapshot, onStep: (message: string) => void): Promise<{ updated: SocialPlatform[]; errors: string[] }> {
+    if (this.refreshing) throw new Error("A refresh is already running. Wait for it to finish.");
+    this.refreshing = true;
+    try {
+      const results: SocialStats[] = [];
+      const errors: string[] = [];
+      for (const platform of SOCIAL_PLATFORMS) {
+        const handle = p.handles[platform];
+        if (!handle) continue;
+        onStep(`Reading ${PLATFORM_LABEL[platform]} ${handle}… (about a minute)`);
+        const r = await runStats(this.kitSettings(), platform, handle);
+        if (r.stats) results.push(r.stats);
+        if (r.error) errors.push(r.error);
+      }
+      if (results.length) {
+        await this.app.vault.process(this.file(p.paths.analytics), (data) => applySocialStats(data, results));
+        const newer = newerPostDate(p.lastSocialPostDate, results);
+        if (newer && p.paths.marketing) await this.patch([{ path: p.paths.marketing, values: { last_social_post_date: newer } }]);
+      }
+      return { updated: results.map((r) => r.platform), errors };
+    } finally {
+      this.refreshing = false;
+    }
+  }
 
   async savePrefs(p: Partial<Prefs>): Promise<void> {
     Object.assign(this.prefs, p);

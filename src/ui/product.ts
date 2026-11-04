@@ -10,7 +10,8 @@ import { count, drawer, emptyNote, infoSection, money, moneyExact, rel, sectionH
 import { h, s } from "./dom";
 import { replayClass } from "./motion";
 import { questLog } from "./quests";
-import { connectSheet } from "./sheets";
+import { confirmRefreshSheet, connectSheet } from "./sheets";
+import { PLATFORM_LABEL, SOCIAL_PLATFORMS } from "../data/social";
 
 const NOTE_NAMES: Record<DocKey, string> = {
   spec: "Dev Spec",
@@ -84,7 +85,7 @@ function overview(ctx: Ctx, p: ProductSnapshot): HTMLElement[] {
   const latest = p.changelog[0];
   const devLine = latest ? latest.added[0] ?? latest.fixed[0] ?? latest.removed[0] ?? "" : "";
   const handles = [p.handles.tiktok, p.handles.instagram, p.handles.youtube, p.handles.x].filter(Boolean);
-  const postTag = sourceTag("lastPost", p, st);
+  const postTag = sourceTag("lastPost", p, st, {}, today);
   out.push(
     h(
       "section",
@@ -118,7 +119,7 @@ function overview(ctx: Ctx, p: ProductSnapshot): HTMLElement[] {
   const todayRow = p.ledger.find((r) => r.date === today || r.day === st.day);
   const capPct = Math.min(1, t.spend / SPEND_CAP);
   const value = (m: Metric, key: string, v: number, fmt: (n: number) => string) => {
-    const tag = sourceTag(m, p, st);
+    const tag = sourceTag(m, p, st, {}, today);
     const shown = tag.kind === "notyet" || tag.kind === "youfill" ? h("span", { class: "nx-tile-value is-empty" }, "—") : ctx.num(`${p.name}:${key}`, v, fmt, "nx-tile-value");
     return { shown, tag: sourceLine(tag) };
   };
@@ -152,6 +153,7 @@ function overview(ctx: Ctx, p: ProductSnapshot): HTMLElement[] {
           revenue.tag,
         ),
       ),
+      socialRefresh(ctx, p),
     ),
   );
 
@@ -289,6 +291,64 @@ function connections(ctx: Ctx, p: ProductSnapshot, day: number | null): HTMLElem
   return row;
 }
 
+/** "When was this last refreshed", in hours for the same day. Marker times are UTC minutes. */
+function agoText(iso: string): string {
+  const ms = Date.now() - Date.parse(`${iso}:00Z`);
+  if (!Number.isFinite(ms)) return "at an unknown time";
+  const min = Math.round(ms / 60_000);
+  if (min < 2) return "just now";
+  if (min < 60) return `${min} minutes ago`;
+  const hours = Math.round(min / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
+
+/**
+ * The manual "Refresh social stats" button (TikTok + Instagram through the scrape kit).
+ * Never runs by itself. Asks first if the last refresh was recent, to keep ban risk low.
+ */
+export function socialRefresh(ctx: Ctx, p: ProductSnapshot): HTMLElement {
+  const kit = ctx.host.socialKit();
+  const handles = SOCIAL_PLATFORMS.filter((pl) => p.handles[pl]);
+  const times = SOCIAL_PLATFORMS.map((pl) => p.socialRefreshed[pl]).filter((x): x is string => !!x).sort();
+  const last = times.at(-1) ?? null;
+  const lastText = SOCIAL_PLATFORMS.filter((pl) => p.socialRefreshed[pl])
+    .map((pl) => `${PLATFORM_LABEL[pl]} ${agoText(p.socialRefreshed[pl] as string)}`)
+    .join(" · ");
+  const row = h("div", { class: "nx-refresh" });
+  row.append(
+    h(
+      "div",
+      { class: "nx-refresh-text" },
+      h("strong", null, "TikTok + Instagram numbers"),
+      h("span", { class: "nx-muted" }, last ? `Last refreshed: ${lastText}.` : "Never refreshed yet."),
+      h("span", { class: "nx-muted" }, "Opens each app once in a hidden browser on this computer (about a minute). Only runs when you press the button."),
+    ),
+  );
+  if (!kit.ok) {
+    row.append(h("span", { class: "nx-source is-notyet" }, kit.reason));
+    return row;
+  }
+  if (!handles.length) {
+    row.append(h("span", { class: "nx-source is-youfill" }, "Add the TikTok or Instagram handle first (Linked accounts)."));
+    return row;
+  }
+  const hoursSince = last ? (Date.now() - Date.parse(`${last}:00Z`)) / 3_600_000 : Infinity;
+  const run = async () => {
+    const res = await ctx.host.refreshSocial(p, (m) => ctx.app.toast(m));
+    if (!res.updated.length) throw new Error(res.errors.join(" ") || "Nothing was updated.");
+    ctx.app.toast(`Social stats updated: ${res.updated.map((x) => `${PLATFORM_LABEL[x]} ✓`).join(" · ")}${res.errors.length ? ` · ${res.errors.join(" ")}` : ""}`);
+  };
+  const id = `refresh:${p.name}`;
+  row.append(
+    hoursSince < kit.minGapHours
+      ? ctx.button({ id, label: "🔄 Refresh social stats", variant: "ghost", title: "You refreshed recently; it will ask first", onClick: () => confirmRefreshSheet(ctx, p, agoText(last as string), run) })
+      : ctx.button({ id, label: "🔄 Refresh social stats", doneLabel: "Updated", title: `Reads ${handles.map((x) => PLATFORM_LABEL[x]).join(" + ")} now`, onClick: run }),
+  );
+  return row;
+}
+
 function organicTable(ctx: Ctx, p: ProductSnapshot): HTMLElement {
   if (!p.organic.length) return emptyNote("Couldn't find the free social stats table in Analytics and Gate.");
   return h(
@@ -313,7 +373,7 @@ function organicTable(ctx: Ctx, p: ProductSnapshot): HTMLElement {
         ),
       ),
     ),
-    h("p", { class: "nx-muted" }, "“—” means nobody has typed it yet. Marketing fills these in until the scheduler is connected."),
+    h("p", { class: "nx-muted" }, "“—” means it's empty. TikTok and Instagram fill in when someone presses Refresh social stats; YouTube is typed by Marketing."),
     h("div", { class: "nx-footer-links" }, openLink(ctx, p, "analytics", "Update these numbers in Analytics and Gate →", "Organic snapshot")),
   );
 }
@@ -368,7 +428,7 @@ function marketing(ctx: Ctx, p: ProductSnapshot): HTMLElement[] {
     questLog(ctx, { id: `mkt:${p.name}`, field: "questLog", title: "Marketing quests", quests: quests(ctx, p), product: p, lockedFilter: "marketing", emptyText: "No marketing quests right now." }),
     counters,
     infoSection(ctx, "dailyNumbers", `Ad spend vs revenue, day by day (days 15–${st.totalDays})`, spendChart(ctx, p, st.totalDays)),
-    infoSection(ctx, "socialStats", undefined, organicTable(ctx, p)),
+    infoSection(ctx, "socialStats", undefined, socialRefresh(ctx, p), organicTable(ctx, p)),
     h("div", { class: "nx-footer-links" }, openLink(ctx, p, "marketing", "Open Marketing Engine →"), openLink(ctx, p, "analytics", "Open Analytics and Gate →")),
   ];
 }

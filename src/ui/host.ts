@@ -2,6 +2,7 @@
 // the browser preview implements it with fake data.
 
 import { NewSprintInput } from "../data/templates";
+import { SocialPlatform } from "../data/social";
 import { DocKey, ProductSnapshot, Role } from "../data/types";
 
 export type Undo = () => Promise<void>;
@@ -29,6 +30,13 @@ export interface Host {
   startDay1(p: ProductSnapshot): Promise<Undo>;
   postedToday(p: ProductSnapshot): Promise<Undo>;
   setField(p: ProductSnapshot, doc: DocKey, key: string, value: string): Promise<Undo>;
+  /** Is the scrape kit usable on this device? `reason` explains why not, in plain words. */
+  socialKit(): { ok: boolean; reason: string; minGapHours: number };
+  /**
+   * Runs the scrape kit once for this product's TikTok + Instagram handles, then writes the numbers
+   * into Analytics and Gate. Only ever called from a button press.
+   */
+  refreshSocial(p: ProductSnapshot, onStep: (message: string) => void): Promise<{ updated: SocialPlatform[]; errors: string[] }>;
   /** Returns the new folder name. */
   createSprint(input: NewSprintInput, startNow: boolean): Promise<string>;
   copy(text: string): Promise<void>;

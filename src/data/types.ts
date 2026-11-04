@@ -96,6 +96,8 @@ export interface ProductSnapshot {
   verdict: string;
   ledger: LedgerRow[];
   organic: OrganicRow[];
+  /** When the Refresh social stats button last filled each app's row (from the hidden line under the table). */
+  socialRefreshed: Partial<Record<"instagram" | "tiktok", string>>;
   stripeLink: string;
   pitch: string;
   mechanics: string[];

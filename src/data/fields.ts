@@ -1,6 +1,7 @@
 // One registry for every section and number on the dashboard: plain label, what it is, why it's there,
 // where it lives and who fills it. The ⓘ cards, the Help sheet and the source tags all read from here.
 
+import { relativeDay } from "./dates";
 import { ProductSnapshot, StatusResult } from "./types";
 
 export interface FieldInfo {
@@ -174,12 +175,17 @@ const FROM: Record<Metric, number> = { spend: 15, clicks: 15, views: 14, revenue
  * Why a number is what it is: not expected yet, needs a person, typed by a person, or filled automatically.
  * `auto` maps a metric to "Stripe · 2h ago" once a connector is set up (Phase 3).
  */
-export function sourceTag(metric: Metric, p: ProductSnapshot, st: StatusResult, auto: Partial<Record<Metric, string>> = {}): SourceTag {
+export function sourceTag(metric: Metric, p: ProductSnapshot, st: StatusResult, auto: Partial<Record<Metric, string>> = {}, today = ""): SourceTag {
   const day = st.day;
   if (["queued", "scaled", "killed"].includes(p.status.toLowerCase()) && metric !== "revenue") {
     return { kind: "notyet", text: "⏳ Not yet · sprint hasn't started" };
   }
   if (auto[metric]) return { kind: "auto", text: `🔌 Auto · ${auto[metric]}` };
+  // Views and last post can come from the Refresh social stats button (Instagram + TikTok).
+  const refreshed = Object.values(p.socialRefreshed).filter(Boolean).sort().at(-1);
+  if (refreshed && (metric === "views" || metric === "lastPost") && (metric === "lastPost" ? !!p.lastSocialPostDate : p.organic.some((o) => o.totalViews !== null))) {
+    return { kind: "auto", text: `🔌 Auto · from the apps, refreshed ${relativeDay(refreshed.slice(0, 10), today)}` };
+  }
   const from = FROM[metric];
   const anyLedger = p.ledger.some((r) => r.filled);
   const has: Record<Metric, boolean> = {

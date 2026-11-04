@@ -168,6 +168,37 @@ const host: Host = {
     set(checked);
     return async () => set(!checked);
   },
+  socialKit: () => ({ ok: !new URLSearchParams(location.search).has("nokit"), reason: "The scrape kit isn't set up on this computer (looked in ~/Developer/social-scrape-kit). See Settings → NXTWAVE Dashboard.", minGapHours: 6 }),
+  refreshSocial: async (p, onStep) => {
+    const done: ("tiktok" | "instagram")[] = [];
+    const errors: string[] = [];
+    for (const pl of ["tiktok", "instagram"] as const) {
+      if (!p.handles[pl]) continue;
+      onStep(`Reading ${pl === "tiktok" ? "TikTok" : "Instagram"} ${p.handles[pl]}… (about a minute)`);
+      await wait(900);
+      if (failNext) {
+        failNext = false;
+        renderSim();
+        errors.push("Instagram: not logged in on this computer. Use “Log in to Instagram” in Settings → NXTWAVE Dashboard (one time).");
+        continue;
+      }
+      done.push(pl);
+    }
+    const now = new Date().toISOString().slice(0, 16);
+    const cur = data.products.find((x) => x.name === p.name)!;
+    update(p.name, {
+      organic: cur.organic.map((o) =>
+        o.platform.toLowerCase().startsWith("tiktok") && done.includes("tiktok")
+          ? { ...o, followers: 1500, totalViews: 23500, bestVideoLink: "https://www.tiktok.com/@demo_tool/video/111", bestVideoViews: 20000 }
+          : o.platform.toLowerCase().startsWith("instagram") && done.includes("instagram")
+            ? { ...o, followers: 96, totalViews: 3100, bestVideoLink: "https://www.instagram.com/reel/AAA/", bestVideoViews: 1900 }
+            : o,
+      ),
+      socialRefreshed: { ...cur.socialRefreshed, ...Object.fromEntries(done.map((d) => [d, now])) },
+      lastSocialPostDate: today,
+    });
+    return { updated: done, errors };
+  },
   setFlag: (p, _doc, key, value) => act(p.name, key === "signed_off_dev" ? { signedOffDev: value } : { signedOffMarketing: value }),
   setFields: (p, _doc, values) => act(p.name, { handles: { ...p.handles, ...values } }),
   openDoc: (p, doc, heading) => app.toast(`Would open ${p.name}/${doc}${heading ? ` # ${heading}` : ""}`),

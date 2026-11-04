@@ -22,6 +22,11 @@ Jobs only a person can do (logins, filming, payments, signatures, votes), each t
 ## Where each number comes from
 Every number carries a tag: **⏳ Not yet** (nothing to measure yet), **✍️ Needs you** (who and where), **✍️ Typed by**, or **🔌 Auto** (connected service, next release). Every section has an ⓘ explaining what it is, why it's there, where it comes from and who fills it. **? Help** (top right) has the color key, pages, glossary and shortcuts.
 
+## Refresh social stats (TikTok + Instagram, manual only)
+On a product page, **🔄 Refresh social stats** runs the separate `social-scrape-kit` on that computer once: it opens each app's profile for the product's handles in a hidden browser, reads followers, views, best video and last post date, and writes them into *Analytics and Gate → Organic snapshot* (plus one hidden line recording when). Nothing runs on a timer. If you press it again within the hours set in Settings (default 6), it asks first, because frequent visits raise the chance an app flags the account.
+
+Setup, on one computer only: Settings → NXTWAVE Dashboard → *Social stats refresh*: kit folder, **Check setup**, then **Log in to TikTok / Instagram** (you sign in by hand in the window that opens). Other computers show why the button isn't available.
+
 ## Status rules
 | Color | When |
 |---|---|

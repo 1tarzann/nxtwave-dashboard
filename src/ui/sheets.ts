@@ -253,3 +253,29 @@ export async function handlesSheet(ctx: Ctx, p: ProductSnapshot): Promise<void> 
     ];
   });
 }
+
+/** Asks before refreshing again soon: each refresh is a visit to the apps, and frequent visits raise ban risk. */
+export async function confirmRefreshSheet(ctx: Ctx, p: ProductSnapshot, ago: string, run: () => Promise<void>): Promise<void> {
+  openSheet(ctx, "Refresh again so soon?", (sheet) => [
+    h("p", null, `${p.displayName}'s TikTok and Instagram numbers were refreshed ${ago}.`),
+    h(
+      "p",
+      { class: "nx-muted" },
+      "Each refresh opens the apps the way a person would. Doing it many times a day makes the apps more likely to flag a product account. Once or twice a day is plenty.",
+    ),
+    h(
+      "div",
+      { class: "nx-sheet-actions" },
+      ctx.button({
+        id: `sheet:refresh:${p.name}`,
+        label: "Refresh anyway",
+        doneLabel: "Updated",
+        onClick: async () => {
+          await run();
+          window.setTimeout(sheet.close, 700);
+        },
+      }),
+      cancel(sheet),
+    ),
+  ]);
+}

@@ -1,6 +1,7 @@
 // Turns the 6 raw sprint docs into one ProductSnapshot. Pure: no Obsidian, no clock.
 
 import { laterDate, normalizeDate, toIsoDate } from "./dates";
+import { readSocialMarker } from "./social";
 import { cell, checklistLines, col, countCheckboxes, isChecked, num, plainText, section, tableIn } from "./markdown";
 import {
   ChangelogEntry,
@@ -249,6 +250,7 @@ export function buildSnapshot(name: string, folder: string, docs: Partial<Record
     verdict: str(fm("analytics").verdict).toLowerCase() || "pending",
     ledger: ledger ?? [],
     organic: parseOrganic(ana),
+    socialRefreshed: readSocialMarker(ana),
     stripeLink,
     pitch,
     mechanics,
