@@ -16,10 +16,14 @@
   button:not(.clickable-icon):hover { background-color: #d2d2d2; box-shadow: 0 1px 3px rgba(0,0,0,.45); }
   input[type='text'] { background: #ffffff; border: 1px solid #b0b0b0; height: 30px; padding: 0 8px; font-size: 13px; border-radius: 4px; }
   input[type='text']:focus { border-color: #888; box-shadow: 0 0 0 2px #aaa; }
-  #sim { position: fixed; left: 0; right: 0; bottom: 0; z-index: 100; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 12px; background: #111; color: #eee; font-size: 12px; }
-  #sim button, #sim select { font: inherit; padding: 4px 8px; border-radius: 6px; border: 1px solid #555; background: #222; color: #eee; cursor: pointer; }
+  /* The app fills the window above the Simulate bar, so the bar never covers a bottom sheet at phone width. */
+  body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+  #app { flex: 1 1 0; min-height: 0; }
+  #sim { flex: 0 0 auto; max-height: 40vh; overflow-y: auto; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 12px; background: #111; color: #eee; font-size: 12px; }
+  #sim button, #sim select { font: inherit; height: auto; min-height: 28px; max-width: 100%; padding: 4px 8px; border-radius: 6px; border: 1px solid #555; background: #222; color: #eee; cursor: pointer; box-shadow: none; }
+  #sim button[aria-pressed="true"] { background: #7a4a00; border-color: #f59e0b; }
+  #sim .sim-toggle { margin-left: auto; }
   #sim label { display: inline-flex; gap: 4px; align-items: center; }
-  #app { height: calc(100vh - 44px); }
 </style>
 </head>
 <body class="theme-light">

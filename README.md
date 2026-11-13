@@ -19,6 +19,35 @@ Jobs only a person can do (logins, filming, payments, signatures, votes), each t
 - **Each product:** sprint quests from the 28-day plan (accounts, videos, checkout, break-it test, test purchase, publish, sign-offs, first $100, daily post and numbers, votes). They check themselves off when the work shows up in the notes.
 - Settings → **Who uses this device?** sets which quests show first.
 
+## Marketing editor (0.5.0)
+The Marketer can fill in and review the whole Marketing Engine on the dashboard, without opening the note. Every change is saved straight into the note, so it looks the same in Obsidian and on your partner's Mac.
+
+**What you can change**
+- **Marketing side:** the 3 **Competitors**, the 10 **Hooks** (grouped 🟢 Recommended, 🟡 Medium, 🔴 Don't use), **Videos to make** (add, edit, delete, and tap Scripted → Recorded → Edited → Scheduled), each line of the **Brand kit**, and the **Paid test plan**. Each part has an **Edit** button that opens one small form. **Use in a video** on a hook adds a new video that uses it.
+- **Developer side:** the **Product profile** line shows which of the 7 facts competitor research needs are still missing. **Fill in** saves Who buys it, Job it does and Price; the other 4 get an **Open Dev Spec** button.
+- The counters at the top of the Marketing side jump to their part of the page. **Open Marketing Engine →** at the bottom opens the note itself.
+- From day 15 (after launch), the Paid test plan, the spend chart and the social stats move to the top.
+- A product that is waiting in line, or already scaled or killed, shows everything read-only.
+
+**Green examples.** An empty box shows a green, slanted hint such as *e.g. Link in bio.* It shows the shape of an answer and never counts as filled in. Type over it, here or in the note. If you empty a box and save, the hint comes back.
+
+**Ask for research and /competitors.** Press **Ask for research** on the Competitors part. The Developer then gets a quest with a **Copy command** button: paste `/competitors <product name>` into Claude Code. Research only starts once the product profile has all 7 facts. It fills in 3 real competitors and 10 rated hooks. A slot it can't fill says "Research couldn't fill this" and why, instead of holding a weak match.
+
+**Looks good.** Research is a draft until the Marketer checks it. Read the competitors and the hooks, fix anything with Edit, then press **Looks good** on each part. The review quest ticks itself off. After a new research run, Looks good shows up again.
+
+**Built-in checks.** A Stripe secret key is refused everywhere: paste the payment link (https://buy.stripe.com/…) instead. A paid test budget over $300 in total is refused (split budgets like "$200 + $200" add up; "$100 first, $300 at most", "$100 first, scale to $300" and "$300 total" are fine). You get a warning, but can still save, when ads start before day 15, when a hook is longer than 12 spoken words, or when a video uses a Don't use hook.
+
+**When you both edit the same spot.** Relay merges both partners' edits line by line.
+- If your partner changes a box while your form is open: in a box you haven't typed in, the form takes their text and tells you ("Your partner just changed Hook, so it now shows their text."). In a box you typed in, it says what they wrote and asks: **Keep mine** keeps your text and saves over theirs; **Use theirs** puts their text in the box instead of yours.
+- If your partner's change reaches the note at the moment you press Save, nothing is overwritten: the form says what changed, and you choose.
+- About 2 seconds after each save the dashboard reads the note again. If Relay kept your partner's version instead of yours, a warning says so, with **Open note**. Warnings and errors (⚠) stay until you close them with ✕.
+
+**Forms keep what you typed.** A tap outside a form with unsaved changes leaves it open; **Cancel**, ✕ or Escape closes it without saving.
+
+**Undo.** Every save shows a message with **Undo** for 5 seconds. Undo puts back exactly what was there before. If the same spot changed again since, Undo leaves it alone and says so.
+
+Old Marketing Engine notes (3 hooks, no ratings) keep working: their hooks show as "Not rated yet", and the dashboard never changes their layout.
+
 ## Where each number comes from
 Every number carries a tag: **⏳ Not yet** (nothing to measure yet), **✍️ Needs you** (who and where), **✍️ Typed by**, or **🔌 Auto** (connected service, next release). Every section has an ⓘ explaining what it is, why it's there, where it comes from and who fills it. **? Help** (top right) has the color key, pages, glossary and shortcuts.
 

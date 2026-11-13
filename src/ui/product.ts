@@ -2,13 +2,17 @@
 
 import { addDays, longDate } from "../data/dates";
 import { FIELDS, Metric, sourceTag } from "../data/fields";
+import { BACKLOG_STEPS, safeUrl } from "../data/marketingOps";
 import { sprintQuests } from "../data/quests";
 import { fmtMoney } from "../data/status";
-import { DocKey, ProductSnapshot, SPEND_CAP } from "../data/types";
+import { BacklogCounts, DOC_FILES, DocKey, ProductSnapshot, SPEND_CAP } from "../data/types";
 import { Ctx, Tab } from "./app";
 import { count, drawer, emptyNote, infoSection, money, moneyExact, rel, sectionHead, sourceLine } from "./components";
-import { h, s } from "./dom";
-import { replayClass } from "./motion";
+import { Child, h, s } from "./dom";
+import { brandKitSection, paidTestSection, videosSection } from "./editors";
+import { competitorsSection, hooksSection } from "./marketing";
+import { reducedMotion, replayClass } from "./motion";
+import { profileLine } from "./profile";
 import { questLog } from "./quests";
 import { confirmRefreshSheet, connectSheet } from "./sheets";
 import { PLATFORM_LABEL, SOCIAL_PLATFORMS } from "../data/social";
@@ -192,8 +196,8 @@ function overview(ctx: Ctx, p: ProductSnapshot): HTMLElement[] {
     h(
       "div",
       { class: "nx-doors" },
-      door("marketing", "📈", "Marketing side", "Competitor examples, video lines, content schedule, daily numbers"),
-      door("dev", "💻", "Developer side", "The 3 core features, progress log, ready-to-launch checks"),
+      door("marketing", "📈", "Marketing side", "Competitors, hooks, videos to make, brand kit, paid test, daily numbers"),
+      door("dev", "💻", "Developer side", "Product profile, the 3 core features, progress log, ready-to-launch checks"),
     ),
     h("div", { class: "nx-footer-links" }, hubLink, p.category ? h("span", { class: "nx-muted" }, `Category: ${p.category.title}`) : null),
   );
@@ -338,7 +342,7 @@ export function socialRefresh(ctx: Ctx, p: ProductSnapshot): HTMLElement {
   const run = async () => {
     const res = await ctx.host.refreshSocial(p, (m) => ctx.app.toast(m));
     if (!res.updated.length) throw new Error(res.errors.join(" ") || "Nothing was updated.");
-    ctx.app.toast(`Social stats updated: ${res.updated.map((x) => `${PLATFORM_LABEL[x]} ✓`).join(" · ")}${res.errors.length ? ` · ${res.errors.join(" ")}` : ""}`);
+    ctx.app.toast(`Social stats updated: ${res.updated.map((x) => `${PLATFORM_LABEL[x]} ✓`).join(" · ")}${res.errors.length ? ` · ${res.errors.join(" ")}` : ""}`, { tone: res.errors.length ? "warn" : "ok" });
   };
   const id = `refresh:${p.name}`;
   row.append(
@@ -368,7 +372,7 @@ function organicTable(ctx: Ctx, p: ProductSnapshot): HTMLElement {
             h("td", null, r.platform),
             h("td", { class: "is-num" }, r.followers === null ? "—" : count(r.followers)),
             h("td", { class: "is-num" }, r.totalViews === null ? "—" : count(r.totalViews)),
-            h("td", null, r.bestVideoLink ? h("a", { href: r.bestVideoLink, class: "nx-link", target: "_blank", rel: "noopener" }, r.bestVideoViews !== null ? `${count(r.bestVideoViews)} views ↗` : "Open ↗") : "—"),
+            h("td", null, bestVideo(r.bestVideoLink, r.bestVideoViews)),
           ),
         ),
       ),
@@ -378,27 +382,90 @@ function organicTable(ctx: Ctx, p: ProductSnapshot): HTMLElement {
   );
 }
 
+/**
+ * The Best video cell: a link only to a web address (the same rule as every card's links), else its text without a
+ * link, so an obsidian: or file: address typed into the note never opens from the dashboard.
+ */
+export function bestVideo(link: string, views: number | null): Child {
+  if (!link) return "—";
+  const href = safeUrl(link);
+  const text = views !== null ? `${count(views)} views` : "Open";
+  return href ? h("a", { href, class: "nx-link", target: "_blank", rel: "noopener" }, `${text} ↗`) : h("span", { class: "nx-muted", title: link }, views !== null ? text : link);
+}
+
 // ── Marketing side ─────────────────────────────────────────────────────────
 
-function counter(ctx: Ctx, p: ProductSnapshot, field: keyof typeof FIELDS, done: number, total: number, doc: DocKey, heading: string, sub?: string): HTMLElement {
+/**
+ * Scrolls to a section further down this page (#nx-sec-<id>, U7) and moves keyboard focus to it, so Tab carries on
+ * from there. No smooth scroll under reduced motion.
+ */
+function showBelow(ctx: Ctx, id: string): void {
+  const el = ctx.app.root.querySelector<HTMLElement>(`#${CSS.escape(`nx-sec-${id}`)}`);
+  if (!el) return;
+  el.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" });
+  if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
+  el.focus({ preventScroll: true });
+}
+
+/** A "Before launch" counter. Clicking it shows its section further down the Marketing side (the note opens from the footer). */
+function counter(ctx: Ctx, field: keyof typeof FIELDS, done: number, total: number, section: string, sub?: string): HTMLElement {
   const full = total > 0 && done >= total;
   const f = FIELDS[field];
   const b = h(
     "button",
-    { class: ["nx-card", "nx-counter", "nx-pressable", full && "is-full"], type: "button", title: `${f.what} Click to open ${NOTE_NAMES[doc]} → ${heading}.` },
+    { class: ["nx-card", "nx-counter", "nx-pressable", full && "is-full"], type: "button", title: `${f.what} Click to see it below.` },
     h("span", { class: "nx-card-label" }, f.label),
     h("span", { class: "nx-counter-value" }, `${done}`, h("span", { class: "nx-muted" }, ` of ${total}`), full ? h("span", { class: "nx-counter-check", "aria-label": "complete" }, " ✓") : null),
     h("div", { class: "nx-mini" }, h("div", { class: "nx-mini-fill", style: { transform: `scaleX(${total ? Math.min(1, done / total) : 0})` } })),
     h("span", { class: "nx-muted" }, sub ?? f.what),
-    h("span", { class: "nx-counter-open" }, `Open ${NOTE_NAMES[doc]} →`),
+    h("span", { class: "nx-counter-open" }, "See below ", h("span", { "aria-hidden": "true" }, "↓")),
   );
-  b.addEventListener("click", () => ctx.openDoc(p, doc, heading));
+  b.addEventListener("click", () => showBelow(ctx, section));
   return b;
+}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/** The Videos scheduled counter's line: "1 scripted · 2 recorded · 0 edited", in the status steps' own words. */
+export function videosSub(v: BacklogCounts): string {
+  if (!v.total) return "No videos planned yet";
+  return BACKLOG_STEPS.filter((step) => step.value !== "scheduled")
+    .map((step) => `${v[step.value]} ${step.label.toLowerCase()}`)
+    .join(" · ");
+}
+
+/** The hooks counter's line: how many slots, and whether the note still has the old 3-hook layout (U9). */
+export function hooksSub(p: ProductSnapshot): string {
+  const layout = p.marketing?.hooks?.layout;
+  if (layout === "v2") return plural(p.hooksTotal, "rated hook");
+  if (layout === "v1") return "3 hooks (old layout)";
+  return "No hook list in the note yet";
+}
+
+/**
+ * After launch (sprint day 15 on, normally status watching or extended) the paid test, the spend chart and the social
+ * stats come first. A sprint still marked building on day 15 is past launch too, as the status colors already treat it.
+ */
+export function afterLaunch(status: string, day: number | null): boolean {
+  return day !== null && day >= 15 && ["building", "watching", "extended"].includes(status.trim().toLowerCase());
+}
+
+/** The parts of the Marketing side between the quest log and the footer, top to bottom. */
+export type MarketingPart = "missingNote" | "counters" | "competitors" | "hooks" | "videos" | "brandkit" | "paidtest" | "spend" | "social";
+
+/**
+ * Before launch: the counters and the Marketing Engine sections, then the paid test plan, the spend chart and the
+ * social stats. After launch those last three come first. Without the Marketing Engine, one line names the missing
+ * note (U8) where its sections would be; the spend chart and social stats come from Analytics and Gate, so they stay.
+ */
+export function marketingParts(after: boolean, hasNote: boolean): MarketingPart[] {
+  const engine: MarketingPart[] = hasNote ? ["counters", "competitors", "hooks", "videos", "brandkit"] : ["missingNote"];
+  const launch: MarketingPart[] = hasNote ? ["paidtest", "spend", "social"] : ["spend", "social"];
+  return after ? [...launch, ...engine] : [...engine, ...launch];
 }
 
 function marketing(ctx: Ctx, p: ProductSnapshot): HTMLElement[] {
   const st = ctx.status(p);
-  const b = p.backlog;
   const header = h(
     "div",
     { class: "nx-side-head" },
@@ -410,25 +477,38 @@ function marketing(ctx: Ctx, p: ProductSnapshot): HTMLElement[] {
       ctx.button({ id: `mkt:${p.name}:log`, label: "Log today's numbers →", variant: "ghost", title: "Opens the Daily numbers table", onClick: () => ctx.openDoc(p, "analytics", "ledger") }),
     ),
   );
-  const counters = h(
-    "section",
-    { class: "nx-section" },
-    h("h3", { class: "nx-section-title" }, "Before launch: get these to full"),
-    h(
-      "div",
-      { class: "nx-counters" },
-      counter(ctx, p, "competitors", p.competitorsFilled, 3, "marketing", "Competitor swipe"),
-      counter(ctx, p, "hooks", p.hooksFilled, 3, "marketing", "Hook scripts"),
-      counter(ctx, p, "brandKit", p.brandKit.filled, p.brandKit.total || 6, "marketing", "Brand kit"),
-      counter(ctx, p, "scheduled", b.scheduled, Math.max(b.total, 1), "marketing", "Content backlog", b.total ? `${b.scripted} written · ${b.recorded} recorded · ${b.edited} edited` : "No videos in the content backlog yet"),
-    ),
-  );
+  const counters = () => {
+    // The snapshot counts videos the way Videos to make shows them (marketingCounts), so the quests agree too.
+    const v = p.backlog;
+    return h(
+      "section",
+      { class: "nx-section" },
+      h("h3", { class: "nx-section-title" }, "Before launch: get these to full"),
+      h(
+        "div",
+        { class: "nx-counters" },
+        counter(ctx, "competitors", p.competitorsFilled, 3, "competitors"),
+        counter(ctx, "hooks", p.hooksFilled, p.hooksTotal, "hooks", hooksSub(p)),
+        counter(ctx, "brandKit", p.brandKit.filled, p.brandKit.total || 6, "brandkit"),
+        counter(ctx, "scheduled", v.scheduled, Math.max(v.total, 1), "videos", videosSub(v)),
+      ),
+    );
+  };
+  const parts: Record<MarketingPart, () => HTMLElement> = {
+    missingNote: () => h("section", { class: "nx-section" }, emptyNote(`${p.displayName} has no Marketing Engine note (${DOC_FILES.marketing}).`)),
+    counters,
+    competitors: () => competitorsSection(ctx, p),
+    hooks: () => hooksSection(ctx, p),
+    videos: () => videosSection(ctx, p),
+    brandkit: () => brandKitSection(ctx, p),
+    paidtest: () => paidTestSection(ctx, p),
+    spend: () => infoSection(ctx, "dailyNumbers", `Ad spend vs revenue, day by day (days 15–${st.totalDays})`, spendChart(ctx, p, st.totalDays)),
+    social: () => infoSection(ctx, "socialStats", undefined, socialRefresh(ctx, p), organicTable(ctx, p)),
+  };
   return [
     header,
     questLog(ctx, { id: `mkt:${p.name}`, field: "questLog", title: "Marketing quests", quests: quests(ctx, p), product: p, lockedFilter: "marketing", emptyText: "No marketing quests right now." }),
-    counters,
-    infoSection(ctx, "dailyNumbers", `Ad spend vs revenue, day by day (days 15–${st.totalDays})`, spendChart(ctx, p, st.totalDays)),
-    infoSection(ctx, "socialStats", undefined, socialRefresh(ctx, p), organicTable(ctx, p)),
+    ...marketingParts(afterLaunch(p.status, st.day), !!p.marketing).map((part) => parts[part]()),
     h("div", { class: "nx-footer-links" }, openLink(ctx, p, "marketing", "Open Marketing Engine →"), openLink(ctx, p, "analytics", "Open Analytics and Gate →")),
   ];
 }
@@ -602,8 +682,12 @@ function dev(ctx: Ctx, p: ProductSnapshot): HTMLElement[] {
       : emptyNote("No entries yet. Each entry resets the Gone Quiet timer during the build."),
   );
 
+  // Only a web address becomes a link; anything else in repo_url (obsidian:, file:, …) shows as plain text.
+  const repoHref = p.repoUrl ? safeUrl(p.repoUrl) : undefined;
   const repo = p.repoUrl
-    ? h("a", { class: "nx-link", href: p.repoUrl, target: "_blank", rel: "noopener" }, `${p.repoUrl.replace(/^https?:\/\//, "")} ↗`)
+    ? repoHref
+      ? h("a", { class: "nx-link", href: repoHref, target: "_blank", rel: "noopener" }, `${p.repoUrl.replace(/^https?:\/\//, "")} ↗`)
+      : h("span", { class: "nx-muted" }, p.repoUrl)
     : (() => {
         const b = h("button", { class: "nx-link", type: "button" }, "+ Add code repo link");
         b.addEventListener("click", () => connectSheet(ctx, p, "spec", "repo_url", "GitHub repo link", "https://github.com/…"));
@@ -614,6 +698,7 @@ function dev(ctx: Ctx, p: ProductSnapshot): HTMLElement[] {
     header,
     questLog(ctx, { id: `dev:${p.name}`, field: "questLog", title: "Developer quests", quests: quests(ctx, p), product: p, lockedFilter: "dev", emptyText: "No developer quests right now." }),
     readiness,
+    profileLine(ctx, p),
     h("div", { class: "nx-two" }, mech, changes),
     h(
       "div",

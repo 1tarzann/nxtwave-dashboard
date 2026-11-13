@@ -1,6 +1,8 @@
 // The quest log: jobs only a person can do (logins, filming, payments, signatures).
 // Every quest checks itself off when the work shows up in the notes. Pure: no Obsidian, no clock.
 
+import { addDays, daysBetween, longDate, relativeDay } from "./dates";
+import { researchState } from "./marketingOps";
 import { computeTotals } from "./snapshot";
 import { ChecklistItem, DocKey, ProductSnapshot, Role, StatusResult } from "./types";
 
@@ -13,7 +15,11 @@ export type QuestAction =
   | { kind: "flag"; label: string; doc: DocKey; key: string }
   | { kind: "openDoc"; label: string; doc: DocKey; heading?: string }
   | { kind: "tickChecklist"; label: string; item: ChecklistItem }
-  | { kind: "openPath"; label: string; path: string };
+  | { kind: "openPath"; label: string; path: string }
+  /** Copies `text` (e.g. a Claude Code command) to the clipboard. */
+  | { kind: "copy"; label: string; text: string }
+  /** Shows a section of the product view: switches to `tab` ("overview", "marketing", "dev") and scrolls to #nx-sec-<id>. */
+  | { kind: "section"; label: string; tab: string; id: string };
 
 export type QuestState = "now" | "overdue" | "upcoming" | "done";
 
@@ -24,10 +30,10 @@ export interface Quest {
   why: string;
   /** Why Claude can't do it. */
   humanOnly: string;
-  /** Plain "where" text, e.g. "Marketing Engine → Brand kit". */
+  /** Plain "where" text, e.g. "Marketing side → Brand kit". */
   where: string;
   state: QuestState;
-  /** e.g. "Due day 10 · in 3 days", "Overdue by 2 days", "Today". */
+  /** e.g. "Due day 10 · in 3 days", "Overdue by 2 days", "Today". Quests timed by a date: "Due Nov 21 · in 3 days", "Due tomorrow". */
   when: string;
   progress?: { done: number; total: number };
   action: QuestAction;
@@ -56,7 +62,30 @@ interface Spec {
   open?: Quest["open"];
 }
 
+/** A quest timed by a calendar date instead of sprint days, because it can come before Day 1 is set. */
+interface DatedSpec extends Omit<Spec, "from" | "to" | "due" | "daily"> {
+  /** YYYY-MM-DD, or null while no date is known yet. */
+  dueDate: string | null;
+  /** The due text while there's no date (default "Start any time"). */
+  noDate?: string;
+}
+
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+
+/** The 7 facts competitor research needs (see ProductProfile). */
+const PROFILE_FIELDS = 7;
+
+const WHO_ASKED: Record<string, string> = { marketing: "The Marketer", dev: "The Developer", both: "Both partners" };
+
+/** "Who buys it" · "Who buys it and Price" · "Who buys it, Job it does and Price". */
+function andList(items: string[]): string {
+  return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+/** The earliest of the known dates, or null. */
+function earliest(dates: (string | null)[]): string | null {
+  return dates.filter((d): d is string => !!d).sort()[0] ?? null;
+}
 
 function launchItem(p: ProductSnapshot, start: string): boolean {
   const s = start.toLowerCase();
@@ -97,11 +126,11 @@ export function sprintQuests(p: ProductSnapshot, st: StatusResult, today: string
       title: "Record the demo videos (your voice + your screen)",
       why: "Raw demos with a real voice beat polished ads (Business Model §5).",
       humanOnly: "Needs your voice and your phone or screen recorder.",
-      where: "Marketing Engine → Content backlog",
+      where: "Marketing side → Videos to make",
       from: 1, to: 14, due: 10, group: B,
       done: b.total > 0 && b.scripted === 0,
       progress: { done: b.recorded + b.edited + b.scheduled, total: b.total },
-      action: { kind: "openDoc", label: "Open Content backlog", doc: "marketing", heading: "Content backlog" },
+      action: { kind: "section", label: "Go to Videos", tab: "marketing", id: "videos" },
     },
     {
       id: "mkt-schedule",
@@ -109,11 +138,11 @@ export function sprintQuests(p: ProductSnapshot, st: StatusResult, today: string
       title: "Schedule every video to go live on day 14",
       why: "Launch day needs posts ready, not posts still being edited.",
       humanOnly: "Needs your login to each app (or the scheduler, once connected).",
-      where: "Marketing Engine → Content backlog",
+      where: "Marketing side → Videos to make",
       from: 1, to: 14, due: 13, group: B,
       done: b.total > 0 && b.scheduled === b.total,
       progress: { done: b.scheduled, total: b.total },
-      action: { kind: "openDoc", label: "Open Content backlog", doc: "marketing", heading: "Content backlog" },
+      action: { kind: "section", label: "Go to Videos", tab: "marketing", id: "videos" },
     },
     {
       id: "mkt-stripe",
@@ -121,10 +150,10 @@ export function sprintQuests(p: ProductSnapshot, st: StatusResult, today: string
       title: "Create the Stripe payment link and paste it in the Brand kit",
       why: "Without a checkout, launch-day visitors can't pay.",
       humanOnly: "Needs the company Stripe login.",
-      where: "Marketing Engine → Brand kit",
+      where: "Marketing side → Brand kit",
       from: 1, to: 14, due: 12, group: B,
       done: !!p.stripeLink,
-      action: { kind: "openDoc", label: "Open Brand kit", doc: "marketing", heading: "Brand kit" },
+      action: { kind: "section", label: "Go to Brand kit", tab: "marketing", id: "brandkit" },
     },
     {
       id: "dev-breakit",
@@ -254,12 +283,128 @@ export function sprintQuests(p: ProductSnapshot, st: StatusResult, today: string
     },
   ];
 
-  const out: Quest[] = [];
+  const out: Quest[] = researchQuests(p, today, B);
   for (const s of specs) {
     const q = toQuest(s, day);
     if (q) out.push(q);
   }
   return out;
+}
+
+/**
+ * Competitor research, in order: the Dev Spec profile, the /competitors run a partner asked for, and the
+ * Marketer's review. Each shows only while it applies and checks itself off when the note shows the work.
+ * Due dates are calendar dates, since Day 1 may not be set yet.
+ */
+function researchQuests(p: ProductSnapshot, today: string, group: string): Quest[] {
+  const profile = p.profile;
+  const missing = profile.missing.map((f) => f.field);
+  const mkt = p.marketing;
+  const request = mkt?.request ?? null;
+  const research = mkt?.research ?? null;
+  // Asked for, and no research since. A /competitors run deletes the request marker when it writes its own
+  // (note-apply), so a request still there on the research day came after that run: it's still waiting.
+  const state = researchState(mkt);
+  const pending = state.pending;
+  const specs: DatedSpec[] = [];
+
+  if (p.status.toLowerCase() === "building") {
+    specs.push({
+      id: "dev-profile",
+      owner: "dev",
+      title: "Fill in the product profile in the Dev Spec",
+      why: profile.complete
+        ? "Competitor research needs 7 facts about the product."
+        : `Competitor research needs 7 facts about the product. Still missing: ${andList(missing)}.`,
+      humanOnly: "Who buys it and the price are partner decisions. Claude can help word them.",
+      where: profile.missing[0]?.where ?? "Dev Spec → 1. One-line pitch",
+      // Day 2, or sooner when a partner is already waiting for research.
+      dueDate: earliest([p.cycleStart ? addDays(p.cycleStart, 1) : null, pending && request ? addDays(request.date, 1) : null]),
+      noDate: "Due day 2 · start any time",
+      group,
+      done: profile.complete,
+      progress: { done: PROFILE_FIELDS - profile.missing.length, total: PROFILE_FIELDS },
+      action: { kind: "openDoc", label: "Open Dev Spec", doc: "spec", heading: "pitch" },
+    });
+  }
+
+  if (request) {
+    const asked = `${Object.prototype.hasOwnProperty.call(WHO_ASKED, request.by) ? WHO_ASKED[request.by] : "A partner"} asked for it ${relativeDay(request.date, today)}`;
+    specs.push({
+      id: "dev-research",
+      owner: "dev",
+      title: "Run competitor research (/competitors in Claude Code)",
+      why: profile.complete
+        ? `${asked}: 3 real competitors and 10 rated video openings, written into the Marketing Engine.`
+        : `Blocked by the product profile: /competitors won't start until ${andList(missing)} ${missing.length === 1 ? "is" : "are"} filled in. ${asked}.`,
+      humanOnly: "Only a person can start /competitors in Claude Code, and you approve the write to the note.",
+      where: "Claude Code on the Developer's Mac",
+      dueDate: addDays(request.date, 1),
+      group,
+      done: !pending,
+      action: { kind: "copy", label: "Copy command", text: `/competitors ${p.name}` },
+      open: profile.complete ? undefined : { doc: "spec", heading: "pitch", label: "Open Dev Spec" },
+    });
+  }
+
+  if (mkt && research) {
+    // A part counts as reviewed when Looks good was pressed on or after the research date.
+    const reviewed = [state.reviewed.competitors, state.reviewed.hooks].filter(Boolean).length;
+    specs.push({
+      id: "mkt-review",
+      owner: "marketing",
+      title: "Review the competitors and hooks, then press Looks good",
+      why: "Research is a draft until you check it: are these real rivals, and would you say these openings on camera?",
+      humanOnly: "Only you can judge whether a competitor is a real rival and a hook sounds like you.",
+      where: "Marketing side → Competitors and Hooks",
+      dueDate: addDays(research.date, 2),
+      group,
+      done: reviewed === 2,
+      progress: { done: reviewed, total: 2 },
+      action: { kind: "section", label: "Review competitors and hooks", tab: "marketing", id: "competitors" },
+    });
+  }
+
+  return specs.map((s) => {
+    const { state, when } = dueBy(s.done, s.dueDate, today, s.noDate ?? "Start any time");
+    return build(s, state, when);
+  });
+}
+
+/** "Due Nov 21 · in 3 days", "Due tomorrow", "Due today", "Overdue by 2 days (was due Nov 21)". */
+function dueBy(done: boolean, dueDate: string | null, today: string, noDate: string): { state: QuestState; when: string } {
+  if (done) return { state: "done", when: "Done" };
+  if (!dueDate) return { state: "now", when: noDate };
+  const left = daysBetween(today, dueDate);
+  if (left < 0) return { state: "overdue", when: `Overdue by ${plural(-left, "day")} (was due ${shortDate(dueDate, today)})` };
+  if (left === 0) return { state: "now", when: "Due today" };
+  if (left === 1) return { state: "now", when: "Due tomorrow" };
+  return { state: "now", when: `Due ${shortDate(dueDate, today)} · in ${plural(left, "day")}` };
+}
+
+/** "Nov 21", or "Jan 2, 2027" when it isn't this year. */
+function shortDate(iso: string, today: string): string {
+  const date = longDate(iso).replace(/^\S+ /, "");
+  return iso.slice(0, 4) === today.slice(0, 4) ? date.replace(/, \d{4}$/, "") : date;
+}
+
+/** The quest a spec describes, with its state and due text. */
+function build(s: Omit<Spec, "from" | "to" | "due">, state: QuestState, when: string): Quest {
+  return {
+    id: s.id,
+    owner: s.owner,
+    title: s.title,
+    why: s.why,
+    humanOnly: s.humanOnly,
+    where: s.where,
+    state,
+    when,
+    progress: s.progress && s.progress.total > 0 ? s.progress : undefined,
+    action: s.action,
+    open: s.open,
+    group: s.group,
+    daily: s.daily,
+  };
 }
 
 function toQuest(s: Spec, day: number | null): Quest | null {
@@ -297,21 +442,7 @@ function toQuest(s: Spec, day: number | null): Quest | null {
     state = "now";
     when = `Due day ${s.due} · in ${plural(s.due - d, "day")}`;
   }
-  return {
-    id: s.id,
-    owner: s.owner,
-    title: s.title,
-    why: s.why,
-    humanOnly: s.humanOnly,
-    where: s.where,
-    state,
-    when,
-    progress: s.progress && s.progress.total > 0 ? s.progress : undefined,
-    action: s.action,
-    open: s.open,
-    group: s.group,
-    daily: s.daily,
-  };
+  return build(s, state, when);
 }
 
 /** Home quests from SETUP_CHECKLIST + the Business Model items it doesn't cover. */

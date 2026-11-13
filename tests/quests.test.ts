@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 import { parseChecklistNote, uniqueBusinessItems } from "../src/data/company";
 import { addDays } from "../src/data/dates";
 import { sourceTag } from "../src/data/fields";
+import { parseMarketing } from "../src/data/marketing";
+import { parseProfile } from "../src/data/profile";
 import { companyQuests, forRole, sprintQuests } from "../src/data/quests";
+import { buildSnapshot } from "../src/data/snapshot";
 import { computeStatus } from "../src/data/status";
 import { setChecklistLine } from "../src/data/templates";
 import { DEFAULT_THRESHOLDS, LedgerRow } from "../src/data/types";
-import { product } from "./helpers";
+import { doc, product } from "./helpers";
+import * as S from "./samples";
 
 const START = "2026-11-01";
 const dayN = (n: number) => addDays(START, n - 1);
@@ -52,6 +56,14 @@ describe("sprint quests", () => {
     expect(byId(done, "mkt-record")?.state).toBe("done");
     expect(byId(done, "mkt-schedule")?.state).toBe("done");
   });
+  it("the videos and brand kit quests go to the dashboard's own sections, never to the note", () => {
+    const qs = quests({}, dayN(5));
+    for (const id of ["mkt-record", "mkt-schedule"]) {
+      expect(byId(qs, id), id).toMatchObject({ where: "Marketing side → Videos to make", action: { kind: "section", label: "Go to Videos", tab: "marketing", id: "videos" } });
+    }
+    expect(byId(qs, "mkt-stripe")).toMatchObject({ where: "Marketing side → Brand kit", action: { kind: "section", label: "Go to Brand kit", tab: "marketing", id: "brandkit" } });
+    expect(byId(quests({ status: "scaled" }, dayN(5)), "mkt-record")?.action.kind ?? "section").toBe("section");
+  });
   it("launch checklist lines finish dev quests", () => {
     const qs = quests({ launchItems: [{ text: "Checkout works with a real test purchase (Stripe or platform)", checked: true }, { text: "Build or store listing is live", checked: false }] }, dayN(10));
     expect(byId(qs, "dev-test-purchase")?.state).toBe("done");
@@ -75,6 +87,128 @@ describe("sprint quests", () => {
     const qs = quests({}, dayN(3));
     expect(forRole(qs, "dev").every((q) => q.owner !== "marketing")).toBe(true);
     expect(forRole(qs, "marketing").some((q) => q.owner === "marketing")).toBe(true);
+  });
+});
+
+describe("competitor research quests", () => {
+  const profileOf = (spec: string) => parseProfile(spec, S.frontmatterOf(spec), {});
+  const COMPLETE = profileOf(S.SPEC_FILLED);
+  const EMPTY = profileOf(S.SPEC_EMPTY);
+  const REQUEST = "nx-research-request: date=2026-11-18";
+  /** Research quests for Demo_Tool with this Marketing Engine and Dev Spec profile. Day 1 is unset unless given. */
+  const research = (note: string | null, over: Parameters<typeof product>[0], today: string) =>
+    quests({ name: "Demo_Tool", cycleStart: null, profile: COMPLETE, marketing: note === null ? null : parseMarketing(note), ...over }, today).filter((q) =>
+      ["dev-profile", "dev-research", "mkt-review"].includes(q.id),
+    );
+  const one = (qs: ReturnType<typeof research>, id: string) => {
+    const q = byId(qs, id);
+    expect(q, id).toBeDefined();
+    return q!;
+  };
+
+  it("dev-profile: open while building with an incomplete profile, even before Day 1", () => {
+    const q = one(research(S.MKT_V2_TEMPLATE, { profile: EMPTY }, "2026-11-13"), "dev-profile");
+    expect(q).toMatchObject({ owner: "dev", state: "now", when: "Due day 2 · start any time", progress: { done: 0, total: 7 } });
+    expect(q.why).toBe("Competitor research needs 7 facts about the product. Still missing: Product type, One-line pitch, Who buys it, Job it does, Price, Target platforms and Core mechanic.");
+    expect(q.where).toBe("Dev Spec → Product type (in the properties at the top)");
+    expect(q.action).toEqual({ kind: "openDoc", label: "Open Dev Spec", doc: "spec", heading: "pitch" });
+    const spanOnly = one(research(null, { profile: profileOf(S.SPEC_SPAN_ONLY) }, "2026-11-13"), "dev-profile");
+    expect(spanOnly).toMatchObject({ progress: { done: 4, total: 7 }, where: "Dev Spec → 1. One-line pitch (the lines under the pitch)" });
+    expect(spanOnly.why).toContain("Still missing: Who buys it, Job it does and Price.");
+  });
+
+  it("dev-profile: due on day 2, or the day after a waiting research request; checked off when complete", () => {
+    const withDay1 = (today: string) => one(research(null, { cycleStart: START, profile: EMPTY }, today), "dev-profile");
+    expect(withDay1(dayN(1)).when).toBe("Due tomorrow");
+    expect(withDay1(dayN(2))).toMatchObject({ state: "now", when: "Due today" });
+    expect(withDay1(dayN(5))).toMatchObject({ state: "overdue", when: "Overdue by 3 days (was due Nov 2)" });
+    const asked = one(research(S.MKT_V2_REQUESTED, { profile: EMPTY }, "2026-11-18"), "dev-profile");
+    expect(asked.when).toBe("Due tomorrow");
+    expect(one(research(S.MKT_V2_REQUESTED, { profile: COMPLETE }, "2026-11-18"), "dev-profile")).toMatchObject({ state: "done", when: "Done" });
+  });
+
+  it("dev-profile only shows while the sprint is building", () => {
+    expect(byId(research(null, { status: "watching", cycleStart: START, profile: EMPTY }, dayN(16)), "dev-profile")).toBeUndefined();
+    expect(byId(research(null, { status: "extended", cycleStart: START, profile: EMPTY }, dayN(30)), "dev-profile")).toBeUndefined();
+  });
+
+  it("dev-research: open while a request is newer than the research; the button copies the command", () => {
+    expect(byId(research(S.MKT_V2_TEMPLATE, {}, "2026-11-18"), "dev-research")).toBeUndefined();
+    const q = one(research(S.MKT_V2_REQUESTED, {}, "2026-11-18"), "dev-research");
+    expect(q).toMatchObject({ owner: "dev", state: "now", when: "Due tomorrow" });
+    expect(q.why).toBe("The Marketer asked for it today: 3 real competitors and 10 rated video openings, written into the Marketing Engine.");
+    expect(q.action).toEqual({ kind: "copy", label: "Copy command", text: "/competitors Demo_Tool" });
+    expect(q.open).toBeUndefined();
+    expect(one(research(S.MKT_V2_REQUESTED, {}, "2026-11-21"), "dev-research")).toMatchObject({ state: "overdue", when: "Overdue by 2 days (was due Nov 19)" });
+    expect(one(research(S.MKT_V2_REQUESTED.replace("by=marketing", "by=dev"), {}, "2026-11-20"), "dev-research").why).toMatch(/^The Developer asked for it 2 days ago:/);
+  });
+
+  it("dev-research: says it's blocked while the profile is incomplete", () => {
+    const q = one(research(S.MKT_V2_REQUESTED, { profile: profileOf(S.SPEC_SPAN_ONLY) }, "2026-11-19"), "dev-research");
+    expect(q.why).toBe("Blocked by the product profile: /competitors won't start until Who buys it, Job it does and Price are filled in. The Marketer asked for it yesterday.");
+    expect(q.open).toEqual({ doc: "spec", heading: "pitch", label: "Open Dev Spec" });
+    expect(q.state).toBe("now");
+  });
+
+  it("dev-research: checked off by research after the request, and opens again for a newer request", () => {
+    expect(one(research(S.MKT_V2_RESEARCHED, {}, "2026-11-20"), "dev-research").state).toBe("done");
+    // A run deletes the request marker (note-apply), so a same-day request that's still there came after the run.
+    const sameDay = S.MKT_V2_RESEARCHED.replace(REQUEST, "nx-research-request: date=2026-11-20");
+    expect(one(research(sameDay, {}, "2026-11-20"), "dev-research").state).toBe("now");
+    // The run removed the request: nothing left to do, and no quest.
+    const consumed = S.MKT_V2_RESEARCHED.replace(/^<!-- nx-research-request:[^\n]*\n/m, "");
+    expect(consumed).not.toBe(S.MKT_V2_RESEARCHED);
+    expect(byId(research(consumed, {}, "2026-11-20"), "dev-research")).toBeUndefined();
+    const askedAgain = S.MKT_V2_RESEARCHED.replace(REQUEST, "nx-research-request: date=2026-11-22");
+    expect(askedAgain).not.toBe(S.MKT_V2_RESEARCHED);
+    expect(one(research(askedAgain, {}, "2026-11-22"), "dev-research")).toMatchObject({ state: "now", when: "Due tomorrow" });
+  });
+
+  it("mkt-review: once research exists, until both parts are reviewed on or after the research date", () => {
+    expect(byId(research(S.MKT_V2_REQUESTED, {}, "2026-11-20"), "mkt-review")).toBeUndefined();
+    const q = one(research(S.MKT_V2_RESEARCHED, {}, "2026-11-20"), "mkt-review");
+    expect(q).toMatchObject({ owner: "marketing", state: "now", when: "Due Nov 22 · in 2 days", progress: { done: 0, total: 2 } });
+    expect(q.action).toEqual({ kind: "section", label: "Review competitors and hooks", tab: "marketing", id: "competitors" });
+    expect(one(research(S.MKT_V2_REVIEWED, {}, "2026-11-21"), "mkt-review")).toMatchObject({ state: "now", when: "Due tomorrow", progress: { done: 1, total: 2 } });
+    expect(one(research(S.MKT_V2_RESEARCHED, {}, "2026-11-25"), "mkt-review")).toMatchObject({ state: "overdue", when: "Overdue by 3 days (was due Nov 22)" });
+    const both = S.MKT_V2_REVIEWED.replace("competitors=2026-11-21", "competitors=2026-11-21 hooks=2026-11-20");
+    expect(one(research(both, {}, "2026-11-21"), "mkt-review").state).toBe("done");
+    const stale = S.MKT_V2_REVIEWED.replace("competitors=2026-11-21", "competitors=2026-11-19 hooks=2026-11-19");
+    expect(one(research(stale, {}, "2026-11-21"), "mkt-review").progress).toEqual({ done: 0, total: 2 });
+  });
+
+  it("a due date in another year shows the year", () => {
+    const lateResearch = S.MKT_V2_RESEARCHED.replace("nx-research: date=2026-11-20", "nx-research: date=2026-12-31");
+    expect(one(research(lateResearch, {}, "2026-12-31"), "mkt-review").when).toBe("Due Jan 2, 2027 · in 2 days");
+  });
+
+  it("never for queued, scaled or killed products", () => {
+    for (const status of ["queued", "scaled", "killed"]) expect(research(S.MKT_V2_REVIEWED, { status, profile: EMPTY }, "2026-11-21"), status).toEqual([]);
+  });
+
+  it("come first, and leave every other quest as it was", () => {
+    const before = quests({}, dayN(3)).map((q) => q.id);
+    const withResearch = quests({ marketing: parseMarketing(S.MKT_V2_RESEARCHED), profile: COMPLETE }, dayN(3));
+    expect(withResearch.map((q) => q.id)).toEqual(["dev-profile", "dev-research", "mkt-review", ...before.filter((id) => id !== "dev-profile")]);
+    const others = (qs: ReturnType<typeof quests>) => qs.filter((q) => !["dev-profile", "dev-research", "mkt-review"].includes(q.id));
+    expect(others(withResearch)).toEqual(others(quests({}, dayN(3))));
+  });
+
+  it("read straight from the notes", () => {
+    const hub = doc("x/Demo_Tool_Hub.md", { sprint_status: "building" });
+    const snap = (mkt: string, spec: string) =>
+      buildSnapshot("Demo_Tool", "x", { marketing: doc("2_Marketing_Engine.md", S.frontmatterOf(mkt), mkt), spec: doc("1_Dev_Spec.md", S.frontmatterOf(spec), spec) }, hub);
+    const ids = (mkt: string, spec: string, today: string) => {
+      const p = snap(mkt, spec);
+      return sprintQuests(p, computeStatus(p, DEFAULT_THRESHOLDS, today), today)
+        .filter((q) => q.state !== "done" && ["dev-profile", "dev-research", "mkt-review"].includes(q.id))
+        .map((q) => q.id);
+    };
+    expect(ids(S.MKT_V2_TEMPLATE, S.SPEC_EMPTY, "2026-11-13")).toEqual(["dev-profile"]);
+    expect(ids(S.MKT_V2_REQUESTED, S.SPEC_NO_TABLE, "2026-11-18")).toEqual(["dev-profile", "dev-research"]);
+    expect(ids(S.MKT_V2_REQUESTED, S.SPEC_FILLED, "2026-11-18")).toEqual(["dev-research"]);
+    expect(ids(S.MKT_V2_RESEARCHED, S.SPEC_FILLED, "2026-11-20")).toEqual(["mkt-review"]);
+    expect(ids(S.MKT_V1_FILLED, S.SPEC_FILLED, "2026-11-20")).toEqual([]);
   });
 });
 

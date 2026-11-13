@@ -121,9 +121,13 @@ export function drawer(opts: { id: string; label: Child; open: boolean; onToggle
     }
     wrap.classList.toggle("is-open", open);
     btn.setAttribute("aria-expanded", String(open));
+    // A closed drawer holds nothing Tab can reach (its content is only squeezed to no height).
+    if (open) body.removeAttribute("inert");
+    else body.setAttribute("inert", "");
     opts.onToggle(open);
   });
-  wrap.append(btn, h("div", { class: "nx-drawer-body" }, inner));
+  const body = h("div", { class: "nx-drawer-body", inert: !opts.open }, inner);
+  wrap.append(btn, body);
   return wrap;
 }
 

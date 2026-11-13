@@ -4,9 +4,10 @@
 import { FieldId } from "../data/fields";
 import { forRole, OWNER_LABEL, Quest } from "../data/quests";
 import { ProductSnapshot } from "../data/types";
-import { Ctx } from "./app";
+import { Ctx, Tab } from "./app";
 import { drawer, emptyNote, sectionHead } from "./components";
 import { h } from "./dom";
+import { reducedMotion } from "./motion";
 import { handlesSheet } from "./sheets";
 
 export type QuestFilter = "all" | "dev" | "marketing";
@@ -219,10 +220,48 @@ function questButtons(ctx: Ctx, q: Quest, p?: ProductSnapshot): HTMLElement[] {
     case "openPath":
       out.push(ctx.button({ id, label: `${a.label} →`, variant: "ghost", onClick: () => ctx.host.openPath(a.path) }));
       break;
+    case "copy":
+      out.push(
+        ctx.button({
+          id,
+          label: a.label,
+          doneLabel: "Copied",
+          title: a.text,
+          onClick: async () => {
+            await ctx.host.copy(a.text);
+            ctx.app.toast(`Copied “${a.text}”`);
+          },
+        }),
+      );
+      break;
+    case "section":
+      if (p) {
+        const { tab, id: section } = a;
+        out.push(ctx.button({ id, label: a.label, variant: "ghost", onClick: () => showSection(ctx, p, tab, section) }));
+      }
+      break;
   }
   if (q.open && p) {
     const o = q.open;
     out.push(ctx.button({ id: `${id}:open`, label: `${o.label} →`, variant: "ghost", onClick: () => ctx.openDoc(p, o.doc, o.heading) }));
   }
   return out;
+}
+
+const TAB_IDS: Tab[] = ["overview", "marketing", "dev"];
+
+/**
+ * Switches the product view to `tab` if it isn't showing, then scrolls #nx-sec-<id> into view when that section
+ * exists and moves keyboard focus to it (like the counters), so the next Tab carries on from there.
+ */
+function showSection(ctx: Ctx, p: ProductSnapshot, tab: string, id: string): void {
+  const route = ctx.app.route;
+  const showing = route.level === "product" && route.name === p.name && route.tab === tab;
+  const target = TAB_IDS.find((t) => t === tab);
+  if (!showing && target) ctx.go({ level: "product", name: p.name, tab: target });
+  const el = ctx.app.root.querySelector<HTMLElement>(`#${CSS.escape(`nx-sec-${id}`)}`);
+  if (!el) return;
+  el.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" });
+  if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
+  el.focus({ preventScroll: true });
 }

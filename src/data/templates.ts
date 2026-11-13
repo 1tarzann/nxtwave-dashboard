@@ -18,6 +18,11 @@ export interface NewSprintInput {
   originIdea: LinkRef | null;
 }
 
+/** Every text box of the New Sprint wizard, for the checks that run before anything is created. */
+export function sprintInputTexts(i: NewSprintInput): string[] {
+  return [i.name, i.productType, i.pitch, ...i.mechanics, i.tiktok, i.instagram, i.youtube, i.repoUrl];
+}
+
 export const TEMPLATE_FILES: Record<DocKey, string> = {
   spec: "TPL_1_Dev_Spec.md",
   marketing: "TPL_2_Marketing_Engine.md",
@@ -63,22 +68,61 @@ export function readFrontmatterRaw(raw: string): Record<string, string> {
 
 /**
  * Sets top-level frontmatter lines to already-YAML-formatted values (use yamlValue for user text).
- * Missing keys are appended at the end of the frontmatter.
+ * Missing keys are appended at the end of the frontmatter. A replaced key's old value goes completely, including
+ * the lines nested under it (an indented block or a "- item" list). So a date Obsidian's property editor turned
+ * into a nested property (`last_updated:` + `  "{ date:YYYY-MM-DD }":`) can't be left behind as broken YAML.
  */
 export function setFrontmatterRaw(raw: string, values: Record<string, string>): string {
+  return replaceBlocks(raw, Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v === "" ? `${k}: ` : `${k}: ${v}`])));
+}
+
+/** A nested line under a top-level key: indented, or a "- item" of a list. */
+const NESTED = /^(?:[ \t]|-(?:[ \t]|$))/;
+
+/**
+ * Each top-level frontmatter key's whole block as written: its line plus the lines nested under it (an indented
+ * block or a "- item" list), joined with "\n". What restoreFrontmatter needs to put a key back exactly.
+ */
+export function frontmatterBlocks(raw: string): Record<string, string> {
+  const m = FM.exec(raw);
+  const out: Record<string, string> = {};
+  if (!m) return out;
+  let key: string | null = null;
+  for (const l of m[1].split(/\r?\n/)) {
+    const k = /^([A-Za-z0-9_]+):/.exec(l)?.[1];
+    if (k) {
+      key = k;
+      out[k] = l;
+    } else if (key !== null && NESTED.test(l)) out[key] += `\n${l}`;
+    else key = null;
+  }
+  return out;
+}
+
+/** Puts each key's block (from frontmatterBlocks) back exactly, nested lines included, replacing what the key holds now. */
+export function restoreFrontmatter(raw: string, blocks: Record<string, string>): string {
+  return replaceBlocks(raw, blocks);
+}
+
+/** Replaces each named key's block (its line and nested lines) with the given lines; a missing key is appended. */
+function replaceBlocks(raw: string, blocks: Record<string, string>): string {
   const m = FM.exec(raw);
   if (!m) return raw;
-  const pending = new Set(Object.keys(values));
-  const line = (k: string) => (values[k] === "" ? `${k}: ` : `${k}: ${values[k]}`);
-  const lines = m[1].split(/\r?\n/).map((l) => {
+  const own = (k: string) => Object.prototype.hasOwnProperty.call(blocks, k);
+  const pending = new Set(Object.keys(blocks));
+  const lines: string[] = [];
+  let replacing = false;
+  for (const l of m[1].split(/\r?\n/)) {
     const k = /^([A-Za-z0-9_]+):/.exec(l)?.[1];
-    if (k && k in values) {
-      pending.delete(k);
-      return line(k);
+    if (k && own(k)) {
+      if (pending.delete(k)) lines.push(blocks[k]);
+      replacing = true;
+    } else if (!(replacing && NESTED.test(l))) {
+      replacing = false;
+      lines.push(l);
     }
-    return l;
-  });
-  for (const k of pending) lines.push(line(k));
+  }
+  for (const k of pending) lines.push(blocks[k]);
   const joined = lines.join("\n");
   return raw.replace(m[1], () => joined);
 }
@@ -117,6 +161,12 @@ export function fillTemplate(doc: DocKey, raw: string, input: NewSprintInput, to
   }
   // Only fill keys the template already has (formatting lock: no new fields).
   const existing = readFrontmatterRaw(out);
+  // A new note is dated today. Setting the date, not only swapping {{date}}, also repairs a template whose date
+  // line Obsidian's property editor turned into a nested property. The template's quotes are kept.
+  if (existing.last_updated !== undefined) {
+    const quote = /^["']/.exec(existing.last_updated.trim())?.[0] ?? "";
+    values.last_updated = `${quote}${today}${quote}`;
+  }
   out = setFrontmatterRaw(out, Object.fromEntries(Object.entries(values).filter(([k]) => k in existing)));
 
   // "# Dev Spec" → "# Demo Game: Dev Spec" + the breadcrumb line the vault uses under every H1.

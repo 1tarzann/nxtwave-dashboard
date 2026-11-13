@@ -4,6 +4,7 @@ import { buildSnapshot, computeTotals, parseChangelog } from "../src/data/snapsh
 import { buildHubNote, fillTemplate, readFrontmatterRaw, sanitizeName, setFrontmatterRaw, yamlValue } from "../src/data/templates";
 import { DOC_ORDER } from "../src/data/types";
 import { doc, fixture, hasFixtures } from "./helpers";
+import { crlf, frontmatterOf, MKT_HALF_DELETED, MKT_V1_FILLED, MKT_V1_TEMPLATE, MKT_V2_PADDED, MKT_V2_RESEARCHED, MKT_V2_TEMPLATE, SPEC_EMPTY, SPEC_FILLED } from "./samples";
 
 describe("markdown helpers", () => {
   it("splitRow keeps escaped pipes inside wiki links", () => {
@@ -28,6 +29,59 @@ describe("markdown helpers", () => {
   });
   it("plainText strips links", () => {
     expect(plainText("see [[02_Active_Sprints/X/1_Dev_Spec\\|Spec]] and `code`")).toBe("see Spec and code");
+  });
+});
+
+describe("sample notes through buildSnapshot", () => {
+  const mkt = (body: string) => buildSnapshot("Demo_Tool", "x", { marketing: doc("2_Marketing_Engine.md", frontmatterOf(body), body) });
+  const spec = (body: string) => buildSnapshot("Demo_Tool", "x", { spec: doc("1_Dev_Spec.md", frontmatterOf(body), body) });
+  const counts = (body: string) => {
+    const p = mkt(body);
+    return { competitorsFilled: p.competitorsFilled, hooksFilled: p.hooksFilled, backlog: p.backlog, brandKit: p.brandKit, stripeLink: p.stripeLink };
+  };
+
+  it("an empty v1 note counts nothing (the ___ hook is not filled)", () => {
+    expect(counts(MKT_V1_TEMPLATE)).toEqual({
+      competitorsFilled: 0,
+      hooksFilled: 0,
+      backlog: { total: 0, scripted: 0, recorded: 0, edited: 0, scheduled: 0 },
+      brandKit: { filled: 0, total: 6 },
+      stripeLink: "",
+    });
+  });
+  it("a filled v1 note keeps today's numbers, padded or compact, LF or CRLF", () => {
+    const expected = {
+      competitorsFilled: 3,
+      hooksFilled: 3,
+      backlog: { total: 3, scripted: 1, recorded: 1, edited: 0, scheduled: 1 },
+      brandKit: { filled: 4, total: 6 },
+      stripeLink: "https://buy.stripe.com/test_demo",
+    };
+    expect(counts(MKT_V1_FILLED)).toEqual(expected);
+    expect(counts(crlf(MKT_V1_FILLED))).toEqual(expected);
+    expect(mkt(MKT_V1_FILLED).handles).toEqual({ tiktok: "@demo_tool", instagram: "@demo.tool", youtube: "@demotool", x: "" });
+    expect(mkt(MKT_V1_FILLED).hasXField).toBe(true);
+  });
+  it("green examples never count as a filled brand kit row, Stripe link or video", () => {
+    expect(counts(MKT_V2_TEMPLATE)).toMatchObject({ backlog: { total: 0, scripted: 0, recorded: 0, edited: 0, scheduled: 0 }, brandKit: { filled: 0, total: 6 }, stripeLink: "" });
+    const researched = { backlog: { total: 1, scripted: 0, recorded: 1, edited: 0, scheduled: 0 }, brandKit: { filled: 2, total: 6 }, stripeLink: "" };
+    expect(counts(MKT_V2_RESEARCHED)).toMatchObject(researched);
+    expect(counts(MKT_V2_PADDED)).toMatchObject(researched);
+    expect(counts(crlf(MKT_V2_PADDED))).toMatchObject(researched);
+  });
+  it("a half-deleted example in the Stripe row is not a payment link", () => {
+    expect(counts(MKT_HALF_DELETED)).toMatchObject({ brandKit: { filled: 0, total: 6 }, stripeLink: "" });
+  });
+  it("reads the filled spec and treats an example-only pitch as empty", () => {
+    const p = spec(SPEC_FILLED);
+    expect(p.productType).toBe("Audio plugin");
+    expect(p.pitch).toBe("A one-knob de-esser that tames harsh S sounds in home-studio vocals.");
+    expect(p.mechanics).toEqual(["One knob sets how much the S sounds are softened", "Finds S sounds on its own and turns only those down", "Before/after button to compare in one click"]);
+    expect(p.milestones).toEqual({ done: 1, total: 4 });
+    expect(spec(SPEC_EMPTY)).toMatchObject({ productType: "", pitch: "", mechanics: [], milestones: { done: 0, total: 4 } });
+    const egPitch = SPEC_EMPTY.replace("> \n", '> <span class="nx-eg">e.g. one line a stranger understands</span>\n');
+    expect(egPitch).not.toBe(SPEC_EMPTY);
+    expect(spec(egPitch).pitch).toBe("");
   });
 });
 
@@ -130,6 +184,19 @@ describe("line-level frontmatter edits", () => {
   });
   it("appends a missing key", () => {
     expect(setFrontmatterRaw("---\na: 1\n---\n", { b: "2" })).toBe("---\na: 1\nb: 2\n---\n");
+  });
+  it("a replaced key loses the lines nested under its old value (Obsidian's broken date, a list)", () => {
+    const broken = '---\nyoutube:\nlast_updated:\n  "{ date:YYYY-MM-DD }":\nx:\n---\n\n# Body\n';
+    expect(setFrontmatterRaw(broken, { last_updated: "2026-11-13" })).toBe("---\nyoutube:\nlast_updated: 2026-11-13\nx:\n---\n\n# Body\n");
+    const list = "---\ntags:\n  - a\n- b\nlast_updated: 2026-11-01\n---\n";
+    expect(setFrontmatterRaw(list, { tags: "demo" })).toBe("---\ntags: demo\nlast_updated: 2026-11-01\n---\n");
+  });
+  it("keeps the nested lines of keys it doesn't touch", () => {
+    const list = "---\ntags:\n  - a\n  - b\nlast_updated: 2026-11-01\n---\n";
+    expect(setFrontmatterRaw(list, { last_updated: "2026-11-13" })).toBe("---\ntags:\n  - a\n  - b\nlast_updated: 2026-11-13\n---\n");
+  });
+  it("leaves keys named like built-in object methods alone", () => {
+    expect(setFrontmatterRaw("---\nconstructor: keep\ntoString: keep\n---\n", { a: "1" })).toBe("---\nconstructor: keep\ntoString: keep\na: 1\n---\n");
   });
 });
 

@@ -2,10 +2,13 @@
 
 import { laterDate, normalizeDate, toIsoDate } from "./dates";
 import { readSocialMarker } from "./social";
-import { cell, checklistLines, col, countCheckboxes, isChecked, num, plainText, section, tableIn } from "./markdown";
+import { cell, checklistLines, col, countCheckboxes, isChecked, isPlaceholder, num, parseLink, plainText, str, tableIn } from "./markdown";
+import { Cell, HookRow, MarketingNote, parseMarketing, videoRule } from "./marketing";
+import { stripeSecret } from "./marketingOps";
+import { parseProfile } from "./profile";
 import {
+  BacklogCounts,
   ChangelogEntry,
-  LinkRef,
   DOC_FILES,
   DOC_ORDER,
   DocKey,
@@ -15,12 +18,6 @@ import {
   RawDoc,
   Totals,
 } from "./types";
-
-function str(v: unknown): string {
-  if (v === null || v === undefined) return "";
-  if (Array.isArray(v)) return v.map(str).join(", ");
-  return String(v).trim();
-}
 
 function numFm(v: unknown): number {
   const n = typeof v === "number" ? v : num(str(v));
@@ -110,15 +107,66 @@ function parseOrganic(body: string): OrganicRow[] {
     }));
 }
 
-/** Parses a frontmatter link like "[[04_Company_Ops/Categories/Audio_Plugins|Audio Plugins]]". */
-export function parseLink(v: unknown): LinkRef | null {
-  const m = /\[\[([^\]|]+?)(?:\|([^\]]+))?\]\]/.exec(str(v));
-  if (!m) return null;
-  const path = m[1].replace(/\.md$/, "").trim();
-  return { path, title: (m[2] ?? path.split("/").pop() ?? path).trim() };
-}
+/** Parses a frontmatter link like "[[04_Company_Ops/Categories/Audio_Plugins|Audio Plugins]]" (it lives in markdown.ts). */
+export { parseLink };
 
 export const displayName = (folderName: string) => folderName.replace(/_/g, " ");
+
+/** What's filled in the Marketing Engine: the numbers on the Marketing side and in the quests. */
+export interface MarketingCounts {
+  competitorsFilled: number;
+  hooksFilled: number;
+  hooksTotal: number;
+  backlog: BacklogCounts;
+  brandKit: { filled: number; total: number };
+  stripeLink: string;
+}
+
+/**
+ * Counts the Marketing Engine. Green examples never count, since cell() strips them.
+ * Old notes (v1: 3 hooks, no Rating column) keep the rules they always had, so their numbers stay the same;
+ * only a research "MISSING:" row is never a competitor. In new notes (v2: 10 rated hooks) every box must hold
+ * more than a placeholder (TBD, ___, MISSING:, left-over "e.g." text from a half-deleted example), a
+ * Don't use hook needs no demo shot, and a video is any row Videos to make shows (isVideoRow): one made by
+ * "Use in a video" counts at once, as not recorded yet. A Stripe secret key is never a filled row or the payment link.
+ */
+export function marketingCounts(m: MarketingNote | null): MarketingCounts {
+  const v2 = m?.hooks?.layout === "v2";
+  const filled = (v: string) => !isPlaceholder(v);
+  /** Old notes: any text. New notes: not a placeholder. */
+  const typed = (c: Cell) => (v2 ? filled(c.value) : c.value !== "");
+
+  const competitorsFilled = (m?.competitors ?? []).filter((r) => (v2 ? filled(r.name.value) : r.name.value !== "" && r.missing === null)).length;
+
+  const hooks = m?.hooks?.rows ?? [];
+  const v1Hook = (r: HookRow) => r.hook.value !== "" && !r.hook.value.includes("___") && r.demo.value !== "";
+  const v2Hook = (r: HookRow) => filled(r.hook.value) && (r.rating === "avoid" || filled(r.demo.value));
+
+  // The rule Videos to make uses (videoRule): v1, a video counts once its Format or Status has text; v2, any row
+  // that isn't only examples, and one without a status is not recorded yet. Its stage is the first of scheduled / edited / recorded / scripted.
+  const backlog: BacklogCounts = { total: 0, scripted: 0, recorded: 0, edited: 0, scheduled: 0 };
+  const isVideo = videoRule(m);
+  for (const r of m?.backlog ?? []) {
+    if (!isVideo(r)) continue;
+    backlog.total++;
+    if (r.status) backlog[r.status]++;
+    else if (v2) backlog.scripted++;
+  }
+
+  // Rows without an Asset label don't count. The last Stripe row holds the payment link. A secret key is neither.
+  const brand = (m?.brandKit ?? []).filter((r) => r.label !== "");
+  const stripe = brand.filter((r) => r.label.toLowerCase().includes("stripe")).pop()?.value.value ?? "";
+  const asset = (c: Cell) => typed(c) && !stripeSecret(c.value);
+
+  return {
+    competitorsFilled,
+    hooksFilled: hooks.filter(v2 ? v2Hook : v1Hook).length,
+    hooksTotal: v2 ? hooks.length : 3,
+    backlog,
+    brandKit: { filled: brand.filter((r) => asset(r.value)).length, total: brand.length },
+    stripeLink: (v2 && !filled(stripe)) || stripeSecret(stripe) ? "" : stripe,
+  };
+}
 
 /** Day-28 vote table: the row whose label mentions "vote", one column per partner. */
 function parseVotes(body: string): { dev: string; marketing: string } {
@@ -149,70 +197,22 @@ export function buildSnapshot(name: string, folder: string, docs: Partial<Record
   const outOfSync = statuses.size > 1 || starts.size > 1;
   if (!hub && present.length) warnings.push(`Missing ${name}_Hub`);
 
-  // Marketing.
-  const mkt = body("marketing");
+  // Marketing. Any change to the note (typing, research, Ask for research, Looks good) counts as Marketer activity.
   const marketingDoc = docs.marketing;
   const marketingTouched = marketingDoc
     ? laterDate(marketingDoc.mtime > 0 ? toIsoDate(marketingDoc.mtime) : null, normalizeDate(fm("marketing").last_updated))
     : null;
-
-  const swipe = tableIn(mkt, "competitor swipe");
-  const competitorsFilled = swipe ? swipe.rows.filter((r) => cell(r, col(swipe, "competitor"))).length : 0;
-
-  const hooks = tableIn(mkt, "hook scripts");
-  const hookCol = hooks ? col(hooks, "hook") : -1;
-  const demoCol = hooks ? col(hooks, "demo") : -1;
-  const hooksFilled = hooks
-    ? hooks.rows.filter((r) => {
-        const h = cell(r, hookCol);
-        return h && !h.includes("___") && cell(r, demoCol);
-      }).length
-    : 0;
-
-  const backlogT = tableIn(mkt, "content backlog");
-  const backlog = { total: 0, scripted: 0, recorded: 0, edited: 0, scheduled: 0 };
-  if (backlogT) {
-    const fmt = col(backlogT, "format");
-    const st = col(backlogT, "status");
-    for (const r of backlogT.rows) {
-      const s = cell(r, st).toLowerCase();
-      if (!cell(r, fmt) && !s) continue;
-      backlog.total++;
-      if (s.includes("scheduled")) backlog.scheduled++;
-      else if (s.includes("edited")) backlog.edited++;
-      else if (s.includes("recorded")) backlog.recorded++;
-      else if (s.includes("scripted")) backlog.scripted++;
-    }
-  }
-
-  const brand = tableIn(mkt, "brand kit");
-  let stripeLink = "";
-  const brandKit = { filled: 0, total: 0 };
-  if (brand) {
-    const a = col(brand, "asset");
-    const v = col(brand, "link", "status", "value");
-    for (const r of brand.rows) {
-      if (!cell(r, a)) continue;
-      brandKit.total++;
-      if (cell(r, v)) brandKit.filled++;
-      if (cell(r, a).toLowerCase().includes("stripe")) stripeLink = cell(r, v);
-    }
-  }
+  const marketing = marketingDoc ? parseMarketing(body("marketing")) : null;
+  const counts = marketingCounts(marketing);
 
   // Analytics.
   const ana = body("analytics");
   const ledger = parseLedger(ana);
   if (docs.analytics && ledger === null) warnings.push("Couldn't read the ledger table (3_Analytics_And_Gate §1)");
 
-  // Dev spec.
+  // Dev spec. The pitch and the core mechanics come from the profile, examples stripped.
   const spec = body("spec");
-  const pitchSec = section(spec, "pitch") ?? "";
-  const pitch = plainText((/^\s*>\s?(.*)$/m.exec(pitchSec)?.[1] ?? "").trim());
-  const mechanics = (section(spec, "core mechanics") ?? "")
-    .split(/\r?\n/)
-    .map((l) => /^\s*\d+\.\s*(.*)$/.exec(l)?.[1]?.trim() ?? "")
-    .filter(Boolean)
-    .map(plainText);
+  const profile = parseProfile(spec, fm("spec"), hubFm);
   const plan = tableIn(spec, "build plan");
   const doneCol = plan ? col(plan, "done") : -1;
   const milestones = plan
@@ -251,14 +251,17 @@ export function buildSnapshot(name: string, folder: string, docs: Partial<Record
     ledger: ledger ?? [],
     organic: parseOrganic(ana),
     socialRefreshed: readSocialMarker(ana),
-    stripeLink,
-    pitch,
-    mechanics,
+    stripeLink: counts.stripeLink,
+    pitch: profile.pitch,
+    mechanics: profile.mechanics,
     milestones,
-    competitorsFilled,
-    hooksFilled,
-    backlog,
-    brandKit,
+    competitorsFilled: counts.competitorsFilled,
+    hooksFilled: counts.hooksFilled,
+    hooksTotal: counts.hooksTotal,
+    backlog: counts.backlog,
+    brandKit: counts.brandKit,
+    marketing,
+    profile,
     launchChecks: countCheckboxes(body("launch")),
     launchItems: checklistLines(body("launch")).filter((l) => l.indent === 0).map((l) => ({ text: l.text, checked: l.checked })),
     votes: parseVotes(body("analytics")),

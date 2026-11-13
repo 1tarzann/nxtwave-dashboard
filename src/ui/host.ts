@@ -3,9 +3,22 @@
 
 import { NewSprintInput } from "../data/templates";
 import { SocialPlatform } from "../data/social";
+import type { TableOp } from "../data/tableEdit";
 import { DocKey, ProductSnapshot, Role } from "../data/types";
 
 export type Undo = () => Promise<void>;
+
+/** A saved table or marker edit: its Undo, plus a check about 2 s later that the note still holds it. */
+export interface EditDone {
+  undo: Undo;
+  /**
+   * Resolves about 2 s after the save: null when the note still holds the edit, else a plain-words warning
+   * (Relay merged a partner's change into the same cells). Never rejects.
+   */
+  settled: Promise<string | null>;
+  /** The op that undoes the edit (what Undo applies): it names the line the edit wrote, e.g. the number a new video got. */
+  inverse?: TableOp;
+}
 
 export interface Prefs {
   /** Who uses this device: sets the default quest filter. */
@@ -40,4 +53,11 @@ export interface Host {
   /** Returns the new folder name. */
   createSprint(input: NewSprintInput, startNow: boolean): Promise<string>;
   copy(text: string): Promise<void>;
+  /**
+   * Applies one TableOp (data/tableEdit) to one product note in a single atomic write. Content edits (set, insert,
+   * delete, restore) also set last_updated to today; marker edits don't. Writes to the same note run one at a time.
+   * Throws ConflictError, TableNotFoundError or RowNotFoundError and writes nothing when the note no longer holds
+   * what the user saw. The Undo applies the inverse op the same way (it can throw ConflictError too).
+   */
+  editTable(p: ProductSnapshot, doc: DocKey, op: TableOp): Promise<EditDone>;
 }

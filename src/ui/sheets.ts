@@ -2,44 +2,113 @@
 
 import { addDays, longDate } from "../data/dates";
 import { activeProducts } from "../data/status";
-import { sanitizeName, NewSprintInput } from "../data/templates";
+import { refuseSecrets } from "../data/marketingOps";
+import { sanitizeName, NewSprintInput, sprintInputTexts } from "../data/templates";
 import { DocKey, LinkRef, ProductSnapshot } from "../data/types";
 import type { Ctx } from "./app";
 import { clear, Child, h } from "./dom";
 import { Undo } from "./host";
 import { reducedMotion, replayClass } from "./motion";
 
-interface Sheet {
+export interface Sheet {
   close(): void;
   body: HTMLElement;
+  /** True from the moment close() runs (the sheet may still be fading out). */
+  readonly closed: boolean;
 }
 
-export function openSheet(ctx: Ctx, title: string, build: (sheet: Sheet) => Child): Sheet {
+export interface SheetOpts {
+  /**
+   * Asked when the dimmed area around the sheet is tapped: false keeps the sheet open (an edit sheet holding typed
+   * text says why inside itself). The ✕, Cancel and Escape always close.
+   */
+  canDismiss?: () => boolean;
+}
+
+/** Where keyboard focus goes back to when the opener was replaced by a re-render: its twin, else its section. */
+function focusBack(ctx: Ctx, previous: HTMLElement | null, key: string | null, sectionId: string | null): void {
+  const root = ctx.app.root;
+  if (previous?.isConnected) {
+    previous.focus({ preventScroll: true });
+    return;
+  }
+  const twin = key ? root.querySelector<HTMLElement>(`[data-fb="${CSS.escape(key)}"]`) : null;
+  if (twin) {
+    twin.focus({ preventScroll: true });
+    return;
+  }
+  const section = sectionId ? root.querySelector<HTMLElement>(`#${CSS.escape(sectionId)}`) : null;
+  if (section) {
+    if (!section.hasAttribute("tabindex")) section.setAttribute("tabindex", "-1");
+    section.focus({ preventScroll: true });
+    return;
+  }
+  root.focus({ preventScroll: true });
+}
+
+/** The sheet on screen (it may be fading out), with its guard, so a new one never replaces it without asking. */
+let current: { sheet: Sheet; opts: SheetOpts; overlay: HTMLElement; drop: () => void } | null = null;
+
+export function openSheet(ctx: Ctx, title: string, build: (sheet: Sheet) => Child, opts: SheetOpts = {}): Sheet {
   const overlay = ctx.app.overlay;
+  const open = current && current.overlay === overlay && !current.sheet.closed ? current : null;
+  if (open) {
+    // Another sheet is open: it keeps typed text it holds (its guard says why inside it), else it closes for good
+    // (its listeners stop) before this one takes its place.
+    if (open.opts.canDismiss && !open.opts.canDismiss()) {
+      overlay.querySelector<HTMLElement>(".nx-sheet")?.focus();
+      return open.sheet;
+    }
+    open.drop();
+  } else if (current && current.overlay === overlay) {
+    current.drop();
+  }
   clear(overlay);
-  const panel = h("div", { class: "nx-sheet", role: "dialog", "aria-modal": "true", "aria-label": title });
+  // tabindex -1: a click on the sheet's text keeps focus inside the dialog, so Escape still reaches it.
+  const panel = h("div", { class: "nx-sheet", role: "dialog", "aria-modal": "true", "aria-label": title, tabindex: "-1" });
   const closeBtn = h("button", { class: "nx-sheet-close nx-pressable", type: "button", "aria-label": "Close" }, "✕");
   const body = h("div", { class: "nx-sheet-body" });
   const previousFocus = document.activeElement as HTMLElement | null;
+  // The opener may be replaced by a re-render while the sheet is open: remember how to find it again.
+  const focusKey = previousFocus?.getAttribute("data-fb") ?? null;
+  const sectionId = previousFocus?.closest<HTMLElement>("[id^='nx-sec-']")?.id ?? null;
   let closed = false;
+  let gone = false;
+  /** Takes this sheet off screen now, without focusing anything (another sheet takes its place). */
+  const drop = () => {
+    closed = true;
+    gone = true;
+    overlay.classList.remove("is-leaving");
+    if (current?.sheet === sheet) current = null;
+  };
   const sheet: Sheet = {
     body,
+    get closed() {
+      return closed;
+    },
     close: () => {
       if (closed) return;
       closed = true;
       overlay.classList.add("is-leaving");
       window.setTimeout(() => {
+        // Replaced by another sheet meanwhile: that one owns the overlay now.
+        if (gone) return;
+        gone = true;
+        if (current?.sheet === sheet) current = null;
         overlay.hidden = true;
         overlay.classList.remove("is-leaving");
         clear(overlay);
-        // The opener may have been replaced by a re-render while the sheet was open.
-        (previousFocus?.isConnected ? previousFocus : ctx.app.root).focus({ preventScroll: true });
+        ctx.app.setBackgroundInert(false);
+        focusBack(ctx, previousFocus, focusKey, sectionId);
       }, reducedMotion() ? 0 : 160);
     },
   };
+  current = { sheet, opts, overlay, drop };
   closeBtn.addEventListener("click", sheet.close);
   overlay.onclick = (e) => {
-    if (e.target === overlay) sheet.close();
+    if (e.target !== overlay) return;
+    if (opts.canDismiss && !opts.canDismiss()) return;
+    sheet.close();
   };
   panel.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
@@ -53,6 +122,7 @@ export function openSheet(ctx: Ctx, title: string, build: (sheet: Sheet) => Chil
   else if (content instanceof Node) body.append(content);
   overlay.append(panel);
   overlay.hidden = false;
+  ctx.app.setBackgroundInert(true);
   window.setTimeout(() => (panel.querySelector<HTMLElement>("input, select, button.nx-btn-primary") ?? closeBtn).focus(), 30);
   return sheet;
 }
@@ -95,7 +165,7 @@ export async function confirmStartDay1(ctx: Ctx, p: ProductSnapshot): Promise<vo
   ]);
 }
 
-function cancel(sheet: Sheet): HTMLElement {
+export function cancel(sheet: Sheet): HTMLElement {
   const b = h("button", { class: "nx-btn nx-btn-ghost nx-pressable", type: "button" }, "Cancel");
   b.addEventListener("click", sheet.close);
   return b;
@@ -114,6 +184,7 @@ export function connectSheet(ctx: Ctx, p: ProductSnapshot, doc: DocKey, key: str
           replayClass(input, "nx-shake", 400);
           throw new Error(`Type the ${label} first.`);
         }
+        refuseSecrets([v]);
         const undo = await ctx.host.setField(p, doc, key, v);
         window.setTimeout(sheet.close, 700);
         return undo;
@@ -181,6 +252,7 @@ export function newSprintWizard(ctx: Ctx, prefill: { name?: string; originIdea?:
           category: cat,
           originIdea: prefill.originIdea ?? null,
         };
+        refuseSecrets(sprintInputTexts(input));
         const folder = await ctx.host.createSprint(input, startNow.checked && !active.length);
         window.setTimeout(() => {
           sheet.close();
@@ -240,6 +312,7 @@ export async function handlesSheet(ctx: Ctx, p: ProductSnapshot): Promise<void> 
         const values: Record<string, string> = {};
         for (const { key, input } of inputs) if (input.value.trim() !== p.handles[key]) values[key] = input.value.trim();
         if (!Object.keys(values).length) throw new Error("Nothing changed. Paste at least one handle.");
+        refuseSecrets(Object.values(values));
         const undo = await ctx.host.setFields(p, "marketing", values);
         window.setTimeout(sheet.close, 700);
         return undo;

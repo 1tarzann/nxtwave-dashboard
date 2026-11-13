@@ -4,12 +4,15 @@
 import { App, Notice, TFile, WorkspaceLeaf } from "obsidian";
 import { addDays, toIsoDate } from "../data/dates";
 import { activeProducts } from "../data/status";
-import { buildHubNote, fillTemplate, NewSprintInput, readFrontmatterRaw, sanitizeName, setChecklistLine, setFrontmatterRaw, TEMPLATE_FILES, yamlValue } from "../data/templates";
+import { buildHubNote, fillTemplate, frontmatterBlocks, NewSprintInput, restoreFrontmatter, sanitizeName, setChecklistLine, setFrontmatterRaw, sprintInputTexts, TEMPLATE_FILES, yamlValue } from "../data/templates";
 import { DashboardData, DOC_FILES, DOC_ORDER, DocKey, ProductSnapshot } from "../data/types";
 import { applySocialStats, newerPostDate, PLATFORM_LABEL, SOCIAL_PLATFORMS, SocialPlatform, SocialStats } from "../data/social";
-import { Host, Prefs, Undo } from "../ui/host";
+import { refuseSecrets } from "../data/marketingOps";
+import type { TableOp } from "../data/tableEdit";
+import { EditDone, Host, Prefs, Undo } from "../ui/host";
 import { checkKit, KitSettings, runStats } from "./kit";
 import { join } from "./reader";
+import { TableWriter } from "./writeQueue";
 
 type Patch = Record<string, string>;
 
@@ -91,6 +94,8 @@ export class ObsidianHost implements Host {
   }
 
   async setFields(p: ProductSnapshot, doc: DocKey, values: Record<string, string>): Promise<Undo> {
+    // Keys never go in the vault, whichever box they were pasted into.
+    refuseSecrets(Object.values(values));
     const yaml = Object.fromEntries(Object.entries(values).map(([k, v]) => [k, yamlValue(v)]));
     return this.patch([{ path: this.file(p.paths[doc]).path, values: { ...yaml, last_updated: this.today() } }]);
   }
@@ -105,20 +110,23 @@ export class ObsidianHost implements Host {
     return f;
   }
 
-  /** Applies patches to several files and returns an Undo that restores the exact previous lines. */
+  /**
+   * Applies patches to several files and returns an Undo that restores the exact previous lines: each key's whole
+   * old block, nested lines included (a list property like tiktok: + "  - @a"), or "key: " for a key that wasn't there.
+   */
   private async patch(changes: { path: string; values: Patch }[]): Promise<Undo> {
-    const before: { path: string; values: Patch }[] = [];
+    const before: { path: string; blocks: Patch }[] = [];
     for (const c of changes) {
       const f = this.file(c.path);
       await this.app.vault.process(f, (data) => {
-        const prev = readFrontmatterRaw(data);
-        before.push({ path: c.path, values: Object.fromEntries(Object.keys(c.values).map((k) => [k, prev[k] ?? ""])) });
+        const prev = frontmatterBlocks(data);
+        before.push({ path: c.path, blocks: Object.fromEntries(Object.keys(c.values).map((k) => [k, prev[k] ?? `${k}: `])) });
         return setFrontmatterRaw(data, c.values);
       });
     }
     return async () => {
       for (const b of before) {
-        await this.app.vault.process(this.file(b.path), (data) => setFrontmatterRaw(data, b.values));
+        await this.app.vault.process(this.file(b.path), (data) => restoreFrontmatter(data, b.blocks));
       }
     };
   }
@@ -176,10 +184,12 @@ export class ObsidianHost implements Host {
   }
 
   async setField(p: ProductSnapshot, doc: DocKey, key: string, value: string): Promise<Undo> {
+    refuseSecrets([value]);
     return this.patch([{ path: this.file(p.paths[doc]).path, values: { [key]: yamlValue(value), last_updated: this.today() } }]);
   }
 
   async createSprint(input: NewSprintInput, startNow: boolean): Promise<string> {
+    refuseSecrets(sprintInputTexts(input));
     const data = this.getData();
     if (!data) throw new Error("The dashboard hasn't loaded the vault yet.");
     const name = sanitizeName(input.name);
@@ -208,5 +218,30 @@ export class ObsidianHost implements Host {
 
   async copy(text: string): Promise<void> {
     await navigator.clipboard.writeText(text);
+  }
+
+  /**
+   * Table and marker edits. Each one is a single vault.process, one at a time per note. The callback never throws:
+   * Obsidian's typings don't say what process() does with a throwing callback, so an op that no longer applies
+   * hands the text back unchanged and its own error is thrown afterwards (instanceof ConflictError keeps working).
+   * Most conflicts are caught by a read just before, so then process() isn't called at all.
+   */
+  private tables = new TableWriter({
+    read: (path) => this.app.vault.read(this.file(path)),
+    process: (path, fn) => this.app.vault.process(this.file(path), fn),
+    today: () => this.today(),
+  });
+
+  async editTable(p: ProductSnapshot, doc: DocKey, op: TableOp): Promise<EditDone> {
+    const path = this.file(p.paths[doc]).path;
+    const done = await this.tables.edit(path, op);
+    return {
+      settled: done.settled,
+      inverse: done.inverse,
+      // Same queue and path; it expects what the edit left, so it refuses (ConflictError) after a partner's change.
+      undo: async () => {
+        await this.tables.edit(path, done.inverse, { check: false });
+      },
+    };
   }
 }

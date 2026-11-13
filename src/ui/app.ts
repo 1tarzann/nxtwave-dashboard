@@ -82,6 +82,7 @@ export class DashboardApp {
   mem = new Memory();
   private zoom: { rect: DOMRect; to: "product" | "home"; name: string } | null = null;
   private timers: number[] = [];
+  private dataListeners = new Set<(data: DashboardData) => void>();
 
   constructor(container: HTMLElement, readonly host: Host) {
     this.root = h("div", { class: "nx-root", tabindex: "-1" });
@@ -112,6 +113,22 @@ export class DashboardApp {
       this.route = { level: "home" };
     }
     this.render();
+    // A copy, so a listener can unsubscribe while it runs; one failing listener doesn't stop the others.
+    for (const fn of [...this.dataListeners]) {
+      try {
+        fn(data);
+      } catch (e) {
+        console.error("NXTWAVE Dashboard: a data listener failed", e);
+      }
+    }
+  }
+
+  /** Calls `fn` with the new data after every setData render (an open edit sheet watches for partner changes). Returns an unsubscribe. */
+  onData(fn: (data: DashboardData) => void): () => void {
+    this.dataListeners.add(fn);
+    return () => {
+      this.dataListeners.delete(fn);
+    };
   }
 
   go(route: Route, from?: Element | null): void {
@@ -191,11 +208,15 @@ export class DashboardApp {
     const active = document.activeElement as HTMLElement | null;
     const hadFocus = !!active && this.root.contains(active);
     const focusKey = active?.getAttribute("data-fb") ?? active?.getAttribute("data-product") ?? null;
+    // When that button is gone (its video was deleted), focus stays in its section, like a closing sheet's focusBack.
+    const sectionId = active?.closest<HTMLElement>("[id^='nx-sec-']")?.id ?? null;
     clear(this.screen);
     this.screen.append(view);
     if (hadFocus && !this.sheetOpen()) {
       const again = focusKey ? this.screen.querySelector<HTMLElement>(`[data-fb="${CSS.escape(focusKey)}"], [data-product="${CSS.escape(focusKey)}"]`) : null;
-      (again ?? this.root).focus({ preventScroll: true });
+      const section = !again && sectionId ? this.screen.querySelector<HTMLElement>(`#${CSS.escape(sectionId)}`) : null;
+      if (section && !section.hasAttribute("tabindex")) section.setAttribute("tabindex", "-1");
+      (again ?? section ?? this.root).focus({ preventScroll: true });
     }
 
     // Square ↔ hub zoom.
@@ -355,52 +376,131 @@ export class DashboardApp {
 
   // ── Toasts & sheets ──────────────────────────────────────────────────────
 
-  toast(message: string, opts: { undo?: Undo; action?: { label: string; run: () => void } } = {}): void {
-    const t = h("div", { class: "nx-toast" }, h("span", { class: "nx-toast-icon", "aria-hidden": "true" }, "✓"), h("span", { class: "nx-toast-msg" }, message));
+  /**
+   * A short message at the corner. tone "ok" (the default) shows ✓ and closes by itself after 3 s (5 s with Undo);
+   * "warn" and "error" show ⚠, are read out at once (role alert) and stay until their ✕ is pressed, so a warning
+   * never looks like a success or vanishes before it's read. A toast's timer waits while it's hovered or focused.
+   */
+  toast(message: string, opts: { undo?: Undo; action?: { label: string; run: () => void }; tone?: "ok" | "warn" | "error" } = {}): void {
+    const tone = opts.tone ?? "ok";
+    const sticky = tone !== "ok";
+    const t = h(
+      "div",
+      { class: ["nx-toast", `is-${tone}`], role: sticky ? "alert" : undefined },
+      h("span", { class: "nx-toast-icon", "aria-hidden": "true" }, sticky ? "⚠" : "✓"),
+      h("span", { class: "nx-toast-msg" }, message),
+    );
     let closed = false;
+    let timer: number | null = null;
+    let left = opts.undo ? 5000 : 3000;
+    let startedAt = 0;
+    let hovered = false;
+    let focused = false;
     const close = () => {
       if (closed) return;
       closed = true;
+      if (timer !== null) window.clearTimeout(timer);
       t.classList.add("is-leaving");
       window.setTimeout(() => t.remove(), reducedMotion() ? 0 : 200);
     };
+    const run = () => {
+      if (closed || sticky || timer !== null || hovered || focused) return;
+      startedAt = Date.now();
+      timer = window.setTimeout(close, left);
+    };
+    const pause = () => {
+      if (timer === null) return;
+      window.clearTimeout(timer);
+      timer = null;
+      left = Math.max(1000, left - (Date.now() - startedAt));
+    };
+    t.addEventListener("mouseenter", () => {
+      hovered = true;
+      pause();
+    });
+    t.addEventListener("mouseleave", () => {
+      hovered = false;
+      run();
+    });
+    t.addEventListener("focusin", () => {
+      focused = true;
+      pause();
+    });
+    t.addEventListener("focusout", (e: FocusEvent) => {
+      if (e.relatedTarget instanceof Node && t.contains(e.relatedTarget)) return;
+      focused = false;
+      run();
+    });
+    // One press per toast: it stays clickable while it fades out, and a second Undo would only fail.
+    const once = (b: HTMLButtonElement, fn: () => void) =>
+      b.addEventListener("click", () => {
+        if (b.disabled || closed) return;
+        b.disabled = true;
+        fn();
+      });
     if (opts.undo) {
       const undo = opts.undo;
       const b = h("button", { class: "nx-toast-btn", type: "button" }, "Undo");
-      b.addEventListener("click", async () => {
+      once(b, () => {
         close();
-        try {
-          await undo();
-          this.toast("Undone");
-        } catch (e) {
-          this.toast(`Undo failed: ${e instanceof Error ? e.message : String(e)}`);
-        }
+        undo().then(
+          () => this.toast("Undone"),
+          (e) => this.toast(`Undo failed: ${e instanceof Error ? e.message : String(e)}`, { tone: "error" }),
+        );
       });
       t.append(b);
     }
     if (opts.action) {
       const { label, run } = opts.action;
       const b = h("button", { class: "nx-toast-btn", type: "button" }, label);
-      b.addEventListener("click", () => {
+      once(b, () => {
         close();
         run();
       });
       t.append(b);
     }
+    if (sticky) {
+      const x = h("button", { class: "nx-toast-btn nx-toast-close", type: "button", "aria-label": "Close" }, "✕");
+      x.addEventListener("click", close);
+      t.append(x);
+    }
     this.toasts.append(t);
-    while (this.toasts.children.length > 3) this.toasts.firstElementChild?.remove();
-    window.setTimeout(close, opts.undo ? 5000 : 3000);
+    // At most 3: the oldest goes first, but a warning that's still open outlasts ordinary toasts.
+    while (this.toasts.children.length > 3) {
+      const all = [...this.toasts.children];
+      (all.find((c) => c !== t && c.classList.contains("is-ok")) ?? all[0])?.remove();
+    }
+    run();
   }
 
   sheetOpen(): boolean {
     return !this.overlay.hidden;
   }
 
+  /**
+   * While a sheet is open the dashboard behind it is inert: Tab, clicks and screen readers stay inside the dialog,
+   * so nothing behind it can open another sheet over typed text. The toasts stay reachable (their Undo).
+   */
+  setBackgroundInert(on: boolean): void {
+    if (on) {
+      this.scroller.setAttribute("inert", "");
+      this.scroller.setAttribute("aria-hidden", "true");
+    } else {
+      this.scroller.removeAttribute("inert");
+      this.scroller.removeAttribute("aria-hidden");
+    }
+  }
+
   // ── Keyboard ─────────────────────────────────────────────────────────────
 
   private onKey(e: KeyboardEvent): void {
     const target = e.target as HTMLElement;
-    if (e.key === "Escape" && this.sheetOpen()) return; // the sheet handles it
+    if (e.key === "Escape" && this.sheetOpen()) {
+      // Escape inside the sheet closes it there; from anywhere else in the dashboard it closes it too.
+      e.preventDefault();
+      this.overlay.querySelector<HTMLButtonElement>(".nx-sheet-close")?.click();
+      return;
+    }
     if (this.sheetOpen() || e.metaKey || e.ctrlKey || e.altKey) return;
     if (target.closest("input, textarea, select, [contenteditable]")) return;
     const data = this.data;

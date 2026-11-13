@@ -1,5 +1,8 @@
 // Shared data shapes. Nothing in src/data imports Obsidian, so it all runs in tests and the browser preview.
 
+import type { MarketingNote } from "./marketing";
+import type { ProductProfile } from "./profile";
+
 export type DocKey = "spec" | "marketing" | "analytics" | "launch" | "changelog" | "audit";
 
 export const DOC_FILES: Record<DocKey, string> = {
@@ -104,8 +107,14 @@ export interface ProductSnapshot {
   milestones: { done: number; total: number };
   competitorsFilled: number;
   hooksFilled: number;
+  /** Hook slots to fill: 3 in the old layout (v1), or every row of the 10 rated hooks (v2). */
+  hooksTotal: number;
   backlog: BacklogCounts;
   brandKit: { filled: number; total: number };
+  /** The Marketing Engine as data (tables, research markers, the "How these 3 were picked" callout). Null when the note is missing. */
+  marketing: MarketingNote | null;
+  /** The 7 facts competitor research needs, from the Dev Spec, with what's still missing and where it goes. */
+  profile: ProductProfile;
   launchChecks: { done: number; total: number };
   /** Every "- [ ]" line in 4_Launch_Checklist, in order. */
   launchItems: { text: string; checked: boolean }[];

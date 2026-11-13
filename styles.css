@@ -611,6 +611,12 @@ body .nx-root .nx-toast.is-leaving { animation: nx-toast-out 200ms var(--nx-ease
 @keyframes nx-toast-in { from { opacity: 0; transform: translateY(10px); } }
 @keyframes nx-toast-out { to { opacity: 0; transform: translateY(10px); } }
 body .nx-root .nx-toast-icon { color: var(--nx-healthy); font-weight: 800; }
+/* A warning or an error (⚠) stays until its ✕ is pressed, and never looks like a success. */
+body .nx-root .nx-toast.is-warn, body .nx-root .nx-toast.is-error { border-left: 4px solid var(--nx-gate); }
+body .nx-root .nx-toast.is-error { border-left-color: var(--nx-stale); }
+body .nx-root .nx-toast.is-warn .nx-toast-icon { color: var(--nx-gate); }
+body .nx-root .nx-toast.is-error .nx-toast-icon { color: var(--nx-stale); }
+body .nx-root .nx-toast-close { border-color: transparent; padding: 4px 8px; }
 body .nx-root .nx-toast-btn { height: auto; padding: 4px 10px; border-radius: 8px; border: 1px solid currentColor; background: transparent; color: inherit; font: inherit; font-weight: 700; cursor: pointer; box-shadow: none; }
 
 body .nx-root .nx-overlay { position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; padding: 16px; background: rgba(0, 0, 0, 0.35); animation: nx-fade 160ms var(--nx-ease) both; }
@@ -745,3 +751,245 @@ body .nx-root .nx-help-list dd { margin: 0; color: var(--nx-muted); }
 /* ── 0.4: manual social refresh ── */
 body .nx-root .nx-refresh { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 12px; padding: 12px 14px; border-radius: 12px; border: 1px dashed var(--nx-border); }
 body .nx-root .nx-refresh-text { display: flex; flex-direction: column; gap: 2px; flex: 1 1 260px; font-size: 0.9em; }
+
+/* ── 0.5: green examples and the edit kit (src/ui/inline.ts) ──────────────
+   .nx-eg is the template's <span class="nx-eg">e.g. …</span>. The first rule is global on purpose (no ".nx-root"
+   prefix), so examples show green and italic in the notes too: Reading view and Live Preview. */
+.nx-eg { color: color-mix(in srgb, var(--color-green) 65%, var(--text-normal)); font-style: italic; }
+/* Inside the dashboard: 55% green mixed toward the text color reads at 5.3:1 or more on cards and inputs, light or dark. */
+body .nx-root .nx-eg { color: color-mix(in srgb, var(--color-green, var(--nx-healthy)) 55%, var(--nx-text)); font-style: italic; }
+
+/* Card text from cellText(): line breaks show, long links wrap instead of pushing the page sideways. */
+body .nx-root .nx-cell-text { white-space: pre-line; overflow-wrap: anywhere; }
+body .nx-root .nx-cell-link { overflow-wrap: anywhere; }
+
+/* Edit sheets. Empty message boxes stay in place (so screen readers hear them fill) but take no room. */
+body .nx-root .nx-edit-sheet [hidden] { display: none !important; }
+body .nx-root .nx-ef { gap: 0; }
+body .nx-root .nx-ef > .nx-field-label { margin-bottom: 4px; }
+body .nx-root .nx-ef > .nx-field-hint, body .nx-root .nx-ef > .nx-ef-words { margin-top: 4px; }
+body .nx-root .nx-edit-sheet textarea.nx-input { min-height: 4.6em; resize: vertical; line-height: 1.45; }
+/* One line of text that wraps and grows with it (a hook, a demo shot, a CTA): as tall as its text, never cut off. */
+body .nx-root .nx-edit-sheet textarea.nx-input.nx-input-line { min-height: 0; resize: none; overflow: hidden; field-sizing: content; }
+body .nx-root .nx-edit-sheet select.nx-input { cursor: pointer; }
+body .nx-root .nx-edit-sheet .nx-input::placeholder { color: color-mix(in srgb, var(--color-green, var(--nx-healthy)) 55%, var(--nx-text)); font-style: italic; opacity: 1; }
+body .nx-root .nx-edit-sheet .nx-input[aria-invalid="true"] { border-color: var(--nx-stale); }
+body .nx-root .nx-ef-words { font-size: 0.78em; color: var(--nx-muted); }
+body .nx-root .nx-ef-words.is-over { color: var(--nx-text); font-weight: 700; }
+body .nx-root .nx-ef-words.is-over::before { content: "⚠ "; }
+body .nx-root .nx-ef-msg { margin: 0; font-size: 0.85em; font-weight: 600; overflow-wrap: anywhere; }
+body .nx-root .nx-ef-msg:not(:empty), body .nx-root .nx-ef-notes:not(:empty) { margin-top: 6px; }
+body .nx-root .nx-ef-msg:not(:empty) { padding: 6px 10px; border-radius: 8px; color: var(--nx-text); }
+body .nx-root .nx-ef-msg.is-warn { background: color-mix(in srgb, var(--nx-gate) 20%, transparent); }
+body .nx-root .nx-ef-msg.is-warn::before { content: "⚠ "; }
+body .nx-root .nx-ef-msg.is-error { border: 1px solid var(--nx-stale); background: color-mix(in srgb, var(--nx-stale) 10%, transparent); }
+body .nx-root .nx-ef-msg.is-error::before { content: "✕ "; color: var(--nx-stale); }
+
+/* "Your partner just changed …": the note with Use theirs / Keep mine, and the quieter line when the box took their text. */
+body .nx-root .nx-ef-partner { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--nx-accent); border-left-width: 4px; background: color-mix(in srgb, var(--nx-accent) 8%, var(--nx-surface)); font-size: 0.88em; overflow-wrap: anywhere; }
+body .nx-root .nx-ef-partner p { margin: 0; }
+body .nx-root .nx-ef-partner-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+body .nx-root .nx-ef-info { margin: 0; font-size: 0.82em; color: var(--nx-muted); overflow-wrap: anywhere; }
+body .nx-root .nx-ef-info::before { content: "↻ "; }
+
+/* Sheet-level lines above the buttons: a removed item (notice) and why a save didn't happen (alert). */
+body .nx-root .nx-ef-notice { margin: 0; }
+body .nx-root .nx-ef-notice:empty, body .nx-root .nx-ef-alert:empty { margin-top: -12px; }
+body .nx-root .nx-ef-notice:not(:empty) { padding: 10px 12px; border-radius: 8px; border: 1px solid var(--nx-gate); font-size: 0.9em; overflow-wrap: anywhere; }
+body .nx-root .nx-ef-alert:not(:empty) { padding: 10px 12px; border-radius: 8px; border: 1px solid var(--nx-stale); background: color-mix(in srgb, var(--nx-stale) 8%, transparent); font-weight: 600; overflow-wrap: anywhere; }
+
+/* Buttons: Save is off while saving, while nothing changed and while a field has an error. */
+body .nx-root .nx-edit-sheet .nx-btn:disabled { opacity: 0.45; cursor: default; }
+body .nx-root .nx-edit-sheet .nx-btn:disabled:hover { transform: none; box-shadow: none; }
+body .nx-root .nx-edit-sheet .nx-btn.is-busy:disabled { opacity: 1; cursor: progress; }
+body .nx-root .nx-ef-danger { margin-left: auto; color: color-mix(in srgb, var(--nx-stale) 75%, var(--nx-text)); }
+body .nx-root .nx-ef-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--nx-stale); }
+body .nx-root .nx-ef-confirm p { margin: 0; flex: 1 1 220px; font-weight: 600; overflow-wrap: anywhere; }
+body .nx-root .nx-ef-confirm-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+body .nx-root .nx-btn.nx-ef-yes { background: var(--nx-kill); color: var(--nx-kill-ink); }
+
+/* The sheet panel takes focus only so a click on its text keeps Escape working; it never shows a ring. */
+body .nx-root .nx-sheet:focus { outline: none; }
+
+/* Phones and narrow panes: a full-width bottom sheet, 44px touch targets, 16px inputs (no zoom on focus). Toasts
+   move to the top left while a sheet is open, so they never cover its Save, Cancel or ✕, and their buttons are 44px tall. */
+@container (max-width: 600px) {
+  body .nx-root .nx-toast-btn { min-height: 44px; padding: 10px 14px; }
+  /* Top left while a sheet is open (not while it's closing, so a "Saved" toast appears in one place), with the right
+     76px kept clear for the sheet's ✕. */
+  body .nx-root:has(> .nx-overlay:not([hidden]):not(.is-leaving)) .nx-toasts { top: 16px; bottom: auto; left: 16px; right: auto; align-items: flex-start; max-width: calc(100% - 92px); }
+  body .nx-root:has(> .nx-overlay:not([hidden]):not(.is-leaving)) .nx-toast { animation-name: nx-toast-down; }
+  body .nx-root:has(> .nx-overlay:not([hidden]):not(.is-leaving)) .nx-toast.is-leaving { animation-name: nx-toast-up; }
+  /* Quest buttons (Copy command, Go to Videos, Review competitors and hooks, Open Dev Spec) are 44px touch targets too. */
+  body .nx-root .nx-quests .nx-btn { min-height: 44px; padding: 10px 16px; }
+  body .nx-root .nx-sheet.nx-edit-sheet { align-self: end; justify-self: stretch; width: auto; margin: 0 -16px -16px; border-radius: 16px 16px 0 0; border-bottom: 0; padding-bottom: env(safe-area-inset-bottom, 0px); animation-name: nx-sheet-up; }
+  body .nx-root .nx-edit-sheet .nx-input { font-size: 16px; min-height: 44px; }
+  body .nx-root .nx-edit-sheet textarea.nx-input.nx-input-line { min-height: 44px; }
+  body .nx-root .nx-edit-sheet .nx-btn { min-height: 44px; padding: 10px 16px; }
+  body .nx-root .nx-edit-sheet .nx-sheet-close { min-width: 44px; min-height: 44px; }
+  body .nx-root .nx-edit-sheet .nx-sheet-actions > .nx-btn, body .nx-root .nx-edit-sheet .nx-ef-partner-actions > .nx-btn, body .nx-root .nx-edit-sheet .nx-ef-confirm-actions > .nx-btn { flex: 1 1 auto; }
+  body .nx-root .nx-ef-danger { margin-left: 0; }
+}
+@keyframes nx-sheet-up { from { opacity: 0.4; transform: translateY(32px); } }
+@keyframes nx-toast-down { from { opacity: 0; transform: translateY(-10px); } }
+@keyframes nx-toast-up { to { opacity: 0; transform: translateY(-10px); } }
+/* Same no-motion path as every other animation (the global reduced-motion rule covers it; named here too). */
+body.nx-reduce-motion .nx-root .nx-sheet.nx-edit-sheet, body.nx-reduce-motion .nx-root .nx-toast { animation: none !important; }
+
+/* ── 0.5: what every Marketing side section and the profile line share ─────
+   Each section root has the id nx-sec-<name> (U7): competitors, hooks, videos, brandkit, paidtest, profile. The
+   counters, the quests' section buttons and "Fill in" scroll to them. */
+/* The sticky top bar is about 107px tall on one row, 151px once it wraps to two (narrow panes, or a long product
+   name) and 193px on three (320px phones), so a section scrolled to keeps its title below it at every width. */
+body .nx-root [id^="nx-sec-"] { scroll-margin-top: 168px; }
+@container (max-width: 340px) { body .nx-root [id^="nx-sec-"] { scroll-margin-top: 210px; } }
+/* The counters jump to these sections: "See below ↓" sits at the bottom of every counter, in one line across the row. */
+body .nx-root .nx-counter-open { margin-top: auto; }
+/* A counter moves keyboard focus to its section: the ring shows for keyboard users only, rounded like the cards. */
+body .nx-root [id^="nx-sec-"]:focus:not(:focus-visible) { outline: none; }
+body .nx-root [id^="nx-sec-"]:focus-visible { border-radius: var(--nx-radius); }
+/* Phones and narrow panes: every ⓘ keeps its small look and gets a 44px tap area (its 22px inside + 11px a side).
+   A link inside a line of text keeps its place too: padding above and below it, which never moves a line, makes it
+   44px tall to tap without spreading the card's lines apart (position: relative keeps that area above the next line). */
+@container (max-width: 600px) {
+  body .nx-root .nx-info-btn { position: relative; }
+  body .nx-root .nx-info-btn::after { content: ""; position: absolute; inset: -11px; }
+  body .nx-root .nx-mk-sec a.nx-link, body .nx-root .nx-ed-section a.nx-link { position: relative; padding-block: calc(22px - 0.5em); }
+  /* That padding would give a sideways-scrolling box (the "How these 3 were picked" grid) a few pixels to scroll up and down. */
+  body .nx-root .nx-mk-sec .nx-table-wrap, body .nx-root .nx-ed-section .nx-table-wrap { overflow-y: hidden; }
+}
+
+/* ── 0.5: Competitors and Hooks (src/ui/marketing.ts) ─────────────────────
+   A rating always shows its word next to its icon; the colored left edge of a hook card only repeats it. */
+body .nx-root .nx-mk-readonly { margin: 0 0 10px; font-size: 0.9em; color: var(--nx-muted); }
+body .nx-root .nx-mk-status { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 12px; padding: 10px 14px; border-radius: 12px; border: 1px dashed var(--nx-border); }
+body .nx-root .nx-mk-status-text { margin: 0; flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
+body .nx-root .nx-mk-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+body .nx-root .nx-mk-done { font-size: 0.85em; font-weight: 700; color: var(--nx-good-text); }
+body .nx-root .nx-mk-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); gap: 12px; }
+body .nx-root .nx-mk-card { min-width: 0; overflow-wrap: anywhere; }
+body .nx-root .nx-mk-card p, body .nx-root .nx-mk-title { margin: 0; }
+body .nx-root .nx-mk-title { font-size: 1.05em; font-weight: 700; }
+body .nx-root .nx-mk-top { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
+body .nx-root .nx-mk-used { margin-left: auto; font-size: 0.78em; font-weight: 700; color: var(--nx-muted); }
+body .nx-root .nx-mk-quote { font-weight: 600; }
+body .nx-root .nx-mk-k { color: var(--nx-muted); font-weight: 600; }
+body .nx-root .nx-mk-small { font-size: 0.82em; }
+body .nx-root .nx-mk-missing { font-weight: 700; }
+body .nx-root .nx-mk-card.is-missing { border-style: dashed; }
+body .nx-root .nx-mk-card-actions { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; margin-top: auto; padding-top: 6px; }
+body .nx-root .nx-mk-rating { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.78em; font-weight: 700; background: rgba(127, 127, 127, 0.16); color: var(--nx-text); }
+body .nx-root .nx-mk-rating.is-recommended { background: color-mix(in srgb, var(--nx-healthy) 22%, transparent); }
+body .nx-root .nx-mk-rating.is-medium { background: color-mix(in srgb, var(--nx-gate) 24%, transparent); }
+body .nx-root .nx-mk-rating.is-avoid { background: color-mix(in srgb, var(--nx-stale) 18%, transparent); }
+body .nx-root .nx-mk-hook.is-recommended { border-left: 4px solid var(--nx-healthy); }
+body .nx-root .nx-mk-hook.is-medium { border-left: 4px solid var(--nx-gate); }
+body .nx-root .nx-mk-hook.is-avoid { border-left: 4px solid var(--nx-stale); }
+body .nx-root .nx-mk-group + .nx-mk-group, body .nx-root .nx-mk-sec .nx-drawer + .nx-mk-group { margin-top: 16px; }
+body .nx-root .nx-mk-group-title { margin: 0 0 8px; font-size: 0.9em; font-weight: 800; }
+body .nx-root .nx-mk-sec .nx-drawer .nx-mk-card { background: var(--nx-surface); }
+body .nx-root .nx-mk-drawer-note { margin: 0 0 10px; font-size: 0.9em; color: var(--nx-muted); }
+body .nx-root .nx-mk-picked { display: flex; flex-direction: column; gap: 8px; font-size: 0.9em; overflow-wrap: anywhere; }
+body .nx-root .nx-mk-picked p, body .nx-root .nx-mk-picked ul, body .nx-root .nx-mk-picked ol { margin: 0; }
+body .nx-root .nx-mk-picked ul, body .nx-root .nx-mk-picked ol { padding-left: 20px; }
+body .nx-root .nx-mk-picked-table { table-layout: fixed; }
+body .nx-root .nx-mk-picked-table th, body .nx-root .nx-mk-picked-table td { vertical-align: top; overflow-wrap: anywhere; }
+body .nx-root .nx-mk-picked-table tbody th { font-size: 1em; color: var(--nx-text); }
+
+/* Phones and narrow panes: 44px touch targets (links in text: the shared block above). */
+@container (max-width: 600px) {
+  body .nx-root .nx-mk-sec .nx-btn, body .nx-root .nx-mk-sec button.nx-link, body .nx-root .nx-mk-sec .nx-drawer-toggle { min-height: 44px; }
+  body .nx-root .nx-mk-sec .nx-btn { padding: 10px 16px; }
+}
+
+/* ── 0.5: Videos to make, Brand kit, Paid test plan (src/ui/editors.ts) and the product profile line (src/ui/profile.ts) ──
+   Same rule as above: keep the "body .nx-root" prefix. Phones and narrow panes: 44px touch targets (the 600px block). */
+body .nx-root .nx-ed-locked { margin: 0 0 10px; color: var(--nx-muted); font-size: 0.9em; overflow-wrap: anywhere; }
+body .nx-root .nx-ed-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+body .nx-root .nx-ed-btn { padding: 5px 12px; font-size: 0.88em; }
+body .nx-root .nx-ed-open { font-size: 0.9em; font-weight: 600; text-align: left; }
+body .nx-root .nx-ed-warn { margin: 0; padding: 6px 10px; border-radius: 8px; background: color-mix(in srgb, var(--nx-gate) 20%, transparent); color: var(--nx-text); font-size: 0.85em; font-weight: 600; overflow-wrap: anywhere; }
+body .nx-root .nx-ed-warn::before { content: "⚠ "; }
+body .nx-root .nx-ed-warn.is-error { border: 1px solid var(--nx-stale); background: color-mix(in srgb, var(--nx-stale) 10%, transparent); }
+body .nx-root .nx-ed-warn.is-error::before { content: "✕ "; color: var(--nx-stale); }
+
+/* Videos to make: one card per video. Cards never get narrower than the pane, so nothing scrolls sideways. */
+body .nx-root .nx-vlist { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 14px; }
+body .nx-root .nx-vlist > li { display: flex; min-width: 0; }
+body .nx-root .nx-vcard { flex: 1 1 auto; min-width: 0; gap: 8px; }
+body .nx-root .nx-vcard-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+body .nx-root .nx-vcard-title { margin: 0; min-width: 0; font-size: 1em; font-weight: 700; line-height: 1.35; overflow-wrap: anywhere; }
+body .nx-root .nx-vcard-num { font-variant-numeric: tabular-nums; }
+body .nx-root .nx-vcard-head > .nx-ed-btn { flex: none; margin-top: -2px; }
+body .nx-root .nx-vchips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+body .nx-root .nx-vchip { padding: 2px 9px; border-radius: 999px; background: rgba(127, 127, 127, 0.16); font-size: 0.78em; font-weight: 600; overflow-wrap: anywhere; }
+body .nx-root .nx-vline { margin: 0; font-size: 0.9em; line-height: 1.4; overflow-wrap: anywhere; }
+body .nx-root .nx-vline-label { color: var(--nx-muted); font-weight: 600; }
+
+/* The 4-step status. Done steps get a filled bar with a ✓ in it (never color alone); the current one is bold and pressed.
+   align-items: stretch, because Obsidian centers every button's content, which would squeeze the bar to nothing.
+   4 steps in a row while each gets about 68px, else 2 by 2 (never 3 + 1): the track's minimum is a quarter of the row
+   when the row is 290px or wider, and half of it below that. The first grid-template-columns is the fallback. */
+body .nx-root .nx-vsteps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-columns: repeat(auto-fit, minmax(clamp((100% - 20px) / 4, (290px - 100%) * 999, (100% - 8px) / 2), 1fr)); gap: 6px; margin: 4px 0 0; padding: 0; list-style: none; }
+body .nx-root .nx-vstep { display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 5px; min-width: 0; height: auto; margin: 0; padding: 6px 2px 4px; border: none; border-radius: 8px; background: none; box-shadow: none; color: var(--nx-muted); font: inherit; font-size: 0.78em; font-weight: 600; line-height: 1.2; text-align: left; white-space: normal; }
+body .nx-root button.nx-vstep { cursor: pointer; transition: background-color var(--nx-fast) var(--nx-ease), color var(--nx-fast) var(--nx-ease); }
+body .nx-root button.nx-vstep:hover { background: rgba(127, 127, 127, 0.12); color: var(--nx-text); box-shadow: none; }
+body .nx-root button.nx-vstep:active { background: rgba(127, 127, 127, 0.2); }
+body .nx-root button.nx-vstep.is-current { cursor: default; }
+body .nx-root .nx-vsteps[aria-busy="true"] button.nx-vstep { cursor: progress; }
+body .nx-root .nx-vstep-bar { position: relative; display: grid; place-items: center; height: 16px; border-radius: 999px; background: rgba(127, 127, 127, 0.22); overflow: hidden; }
+body .nx-root .nx-vstep-bar::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--nx-healthy); transform: scaleX(0); transform-origin: left; transition: transform var(--nx-base) var(--nx-ease); }
+body .nx-root .nx-vstep-label { overflow-wrap: anywhere; }
+body .nx-root .nx-vstep.is-reached { color: var(--nx-text); }
+body .nx-root .nx-vstep.is-reached .nx-vstep-bar::after { transform: scaleX(1); }
+body .nx-root .nx-vstep.is-reached .nx-vstep-bar::before { content: "✓"; position: relative; z-index: 1; color: var(--nx-healthy-ink); font-size: 11px; font-weight: 800; line-height: 1; }
+body .nx-root .nx-vstep.is-current { font-weight: 800; color: var(--nx-text); }
+body .nx-root .nx-vstep.is-busy .nx-vstep-bar::after { transform: scaleX(1); animation: nx-vstep-busy 700ms ease-in-out infinite alternate; }
+body .nx-root .nx-vstep-pop .nx-vstep-bar::after { animation: nx-vstep-fill var(--nx-slow) var(--nx-ease) both; }
+@keyframes nx-vstep-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes nx-vstep-busy { from { opacity: 0.2; } to { opacity: 0.7; } }
+/* Empty, the error line stays in place (so screen readers hear it fill) and takes no room. */
+body .nx-root .nx-vsteps-error { margin: 0; font-size: 0.85em; font-weight: 600; color: var(--nx-text); overflow-wrap: anywhere; }
+body .nx-root .nx-vsteps-error:not(:empty) { margin-top: 6px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--nx-stale); background: color-mix(in srgb, var(--nx-stale) 8%, transparent); }
+body .nx-root .nx-vsteps-error:not(:empty)::before { content: "✕ "; color: var(--nx-stale); }
+
+/* No videos yet: a dashed example card in green examples. */
+body .nx-root .nx-vempty { flex-direction: column; align-items: flex-start; gap: 12px; }
+body .nx-root .nx-vempty-text { margin: 0; }
+body .nx-root .nx-vcard.is-example { box-sizing: border-box; width: min(100%, 420px); border-style: dashed; background: transparent; }
+
+/* Brand kit and Paid test plan: label / value lines, the Edit button at the end of the value. */
+body .nx-root .nx-kv { margin: 0; border: 1px solid var(--nx-border); border-radius: var(--nx-radius); background: var(--nx-surface-2); overflow: hidden; }
+body .nx-root .nx-kv-row { display: grid; grid-template-columns: minmax(110px, 30%) minmax(0, 1fr); gap: 4px 14px; align-items: center; padding: 8px 14px; border-top: 1px solid var(--nx-border); }
+body .nx-root .nx-kv-row:first-child { border-top: none; }
+body .nx-root .nx-kv-label { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 0.9em; font-weight: 600; overflow-wrap: anywhere; }
+body .nx-root .nx-kv-label .nx-dot { flex: none; }
+body .nx-root .nx-kv-value { display: flex; align-items: center; gap: 10px; min-width: 0; margin: 0; }
+body .nx-root .nx-kv-text { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+body .nx-root .nx-kv-text > .nx-ed-warn { align-self: stretch; }
+body .nx-root .nx-kv-value > .nx-ed-btn { flex: none; }
+
+/* The Developer's product profile line. */
+body .nx-root .nx-prof-line { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 12px 14px; border-radius: var(--nx-radius); border: 1px solid var(--nx-border); border-left: 5px solid var(--nx-gate); background: var(--nx-surface-2); }
+body .nx-root .nx-prof-line.is-ready { border-left-color: var(--nx-healthy); }
+body .nx-root .nx-prof-status { flex: 1 1 220px; min-width: 0; margin: 0; font-weight: 700; overflow-wrap: anywhere; }
+body .nx-root .nx-prof-paste { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 10px 0 0; font-size: 0.9em; }
+/* Each missing fact: its name and where it goes on the left, its Open Dev Spec button on the right. */
+body .nx-root .nx-prof-list { margin: 8px 0 0; padding: 0; list-style: none; }
+body .nx-root .nx-prof-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 12px; padding: 8px 2px; border-top: 1px solid var(--nx-border); font-size: 0.9em; }
+body .nx-root .nx-prof-item:first-child { border-top: none; }
+body .nx-root .nx-prof-field { grid-column: 1; font-weight: 700; }
+body .nx-root .nx-prof-where { grid-column: 1; min-width: 0; color: var(--nx-muted); overflow-wrap: anywhere; }
+body .nx-root .nx-prof-item > .nx-ed-open { grid-column: 2; grid-row: 1 / span 2; }
+
+@container (max-width: 600px) {
+  body .nx-root .nx-ed-btn { min-height: 44px; padding: 10px 16px; }
+  body .nx-root .nx-ed-open { display: inline-flex; align-items: center; min-height: 44px; }
+  body .nx-root .nx-vstep { min-height: 44px; }
+  body .nx-root .nx-kv-row { grid-template-columns: minmax(0, 1fr); padding: 10px 12px; }
+}
+
+/* Same no-motion path as every other animation (the global reduced-motion rule covers these; named here too). */
+body.nx-reduce-motion .nx-root .nx-vstep-pop .nx-vstep-bar::after, body.nx-reduce-motion .nx-root .nx-vstep.is-busy .nx-vstep-bar::after { animation: none !important; }
+body.nx-reduce-motion .nx-root .nx-vstep-bar::after, body.nx-reduce-motion .nx-root button.nx-vstep { transition: none !important; }
+body.nx-reduce-motion .nx-root .nx-vstep.is-busy .nx-vstep-bar::after { opacity: 0.45; }
