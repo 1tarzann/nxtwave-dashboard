@@ -349,12 +349,36 @@ function partnerEditsHook2(): void {
 
 // ── Host ────────────────────────────────────────────────────────────────────
 
-const prefs: Prefs = { role: (new URLSearchParams(location.search).get("role") as Prefs["role"]) ?? "both", guideSeen: new URLSearchParams(location.search).has("noguide") };
+// The quest log's open/closed state is remembered per browser here, the way Obsidian remembers it per device.
+// ?quests=open or ?quests=closed overrides it for one load.
+const QUESTS_KEY = "nx-preview-quests";
+const remembered = (): boolean | null => {
+  const q = new URLSearchParams(location.search).get("quests");
+  if (q === "open" || q === "closed") return q === "open";
+  try {
+    const v = localStorage.getItem(QUESTS_KEY);
+    return v === null ? null : v === "open";
+  } catch {
+    return null;
+  }
+};
+const prefs: Prefs = {
+  role: (new URLSearchParams(location.search).get("role") as Prefs["role"]) ?? "both",
+  guideSeen: new URLSearchParams(location.search).has("noguide"),
+  questLogOpen: remembered(),
+};
 const host: Host = {
   version: "preview",
   prefs,
   savePrefs: async (p) => {
     Object.assign(prefs, p);
+    if (typeof p.questLogOpen === "boolean") {
+      try {
+        localStorage.setItem(QUESTS_KEY, p.questLogOpen ? "open" : "closed");
+      } catch {
+        // Private window or blocked storage: it just isn't remembered.
+      }
+    }
   },
   tickLine: async (path, match, checked) => {
     await wait(350);

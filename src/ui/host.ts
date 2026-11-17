@@ -25,6 +25,8 @@ export interface Prefs {
   role: Role;
   /** The one-time "How to read this page" card was dismissed. */
   guideSeen: boolean;
+  /** The quest log was left open (true) or closed (false) on this device. Unset until someone opens or closes it. */
+  questLogOpen?: boolean | null;
 }
 
 export interface Host {

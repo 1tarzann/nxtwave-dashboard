@@ -12,6 +12,8 @@ export interface Scenario {
   status?: string;
   today?: string;
   deferMs?: number;
+  /** This device's prefs (role, quest log open or closed). */
+  prefs?: Record<string, unknown>;
 }
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -45,8 +47,11 @@ export async function makeApp(sc: Scenario) {
   const reread = () => (sc.deferMs === undefined ? app.setData(data()) : setTimeout(() => app.setData(data()), sc.deferMs));
   const host: any = {
     version: "test",
-    prefs: { role: "both", guideSeen: true },
-    savePrefs: async () => undefined,
+    prefs: { role: "both", guideSeen: true, ...sc.prefs },
+    savePrefs: async (p: Record<string, unknown>) => {
+      host.calls.push(["savePrefs", [p]]);
+      Object.assign(host.prefs, p);
+    },
     openDoc: () => undefined,
     openPath: () => undefined,
     copy: async () => undefined,

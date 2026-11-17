@@ -3,7 +3,6 @@
 import { addDays, longDate } from "../data/dates";
 import { FIELDS, Metric, sourceTag } from "../data/fields";
 import { BACKLOG_STEPS, safeUrl } from "../data/marketingOps";
-import { sprintQuests } from "../data/quests";
 import { fmtMoney } from "../data/status";
 import { BacklogCounts, DOC_FILES, DocKey, ProductSnapshot, SPEND_CAP } from "../data/types";
 import { Ctx, Tab } from "./app";
@@ -13,7 +12,6 @@ import { brandKitSection, paidTestSection, videosSection } from "./editors";
 import { competitorsSection, hooksSection } from "./marketing";
 import { reducedMotion, replayClass } from "./motion";
 import { profileLine } from "./profile";
-import { questLog } from "./quests";
 import { confirmRefreshSheet, connectSheet } from "./sheets";
 import { PLATFORM_LABEL, SOCIAL_PLATFORMS } from "../data/social";
 
@@ -43,10 +41,6 @@ function openLink(ctx: Ctx, p: ProductSnapshot, doc: DocKey, label: string, head
   return b;
 }
 
-function quests(ctx: Ctx, p: ProductSnapshot) {
-  return sprintQuests(p, ctx.status(p), ctx.today);
-}
-
 // ── Overview ───────────────────────────────────────────────────────────────
 
 function overview(ctx: Ctx, p: ProductSnapshot): HTMLElement[] {
@@ -72,20 +66,7 @@ function overview(ctx: Ctx, p: ProductSnapshot): HTMLElement[] {
   if (t.totalsMismatch) notes.push(h("span", { class: "nx-warn-chip", title: "The dashboard shows the larger number" }, "⚠ The totals at the top of Analytics don't match the Daily numbers table"));
   if (notes.length) out.push(h("div", { class: "nx-chips-row" }, notes));
 
-  // 2. This product's quests.
-  out.push(
-    questLog(ctx, {
-      id: `sprint:${p.name}`,
-      field: "questLog",
-      title: `${p.displayName} quests`,
-      quests: quests(ctx, p),
-      product: p,
-      emptyText: p.status.toLowerCase() === "queued" ? "Quests appear when this product's sprint starts." : "No quests for this filter.",
-      max: 3,
-    }),
-  );
-
-  // 3. Latest activity.
+  // 2. Latest activity. (Quests live in the quest log on the right edge.)
   const latest = p.changelog[0];
   const devLine = latest ? latest.added[0] ?? latest.fixed[0] ?? latest.removed[0] ?? "" : "";
   const handles = [p.handles.tiktok, p.handles.instagram, p.handles.youtube, p.handles.x].filter(Boolean);
@@ -119,7 +100,7 @@ function overview(ctx: Ctx, p: ProductSnapshot): HTMLElement[] {
     ),
   );
 
-  // 4. Money and reach, each with where the number comes from.
+  // 3. Money and reach, each with where the number comes from.
   const todayRow = p.ledger.find((r) => r.date === today || r.day === st.day);
   const capPct = Math.min(1, t.spend / SPEND_CAP);
   const value = (m: Metric, key: string, v: number, fmt: (n: number) => string) => {
@@ -161,13 +142,13 @@ function overview(ctx: Ctx, p: ProductSnapshot): HTMLElement[] {
     ),
   );
 
-  // 5. Timeline.
+  // 4. Timeline.
   out.push(infoSection(ctx, "timeline", undefined, timeline(p, st.day, st.totalDays)));
 
-  // 6. Linked accounts.
+  // 5. Linked accounts.
   out.push(infoSection(ctx, "linked", undefined, connections(ctx, p, st.day)));
 
-  // 7. Free social stats.
+  // 6. Free social stats.
   const drawerId = `social:${p.name}`;
   out.push(
     drawer({
@@ -179,7 +160,7 @@ function overview(ctx: Ctx, p: ProductSnapshot): HTMLElement[] {
     }),
   );
 
-  // 8. The two doors.
+  // 7. The two doors.
   const door = (tab: Tab, icon: string, title: string, sub: string) => {
     const b = h("button", { class: "nx-door nx-pressable", type: "button" }, h("span", { class: "nx-door-icon", "aria-hidden": "true" }, icon), h("span", { class: "nx-door-title" }, `${title} →`), h("span", { class: "nx-muted" }, sub));
     b.addEventListener("click", () => ctx.go({ level: "product", name: p.name, tab }));
@@ -507,7 +488,6 @@ function marketing(ctx: Ctx, p: ProductSnapshot): HTMLElement[] {
   };
   return [
     header,
-    questLog(ctx, { id: `mkt:${p.name}`, field: "questLog", title: "Marketing quests", quests: quests(ctx, p), product: p, lockedFilter: "marketing", emptyText: "No marketing quests right now." }),
     ...marketingParts(afterLaunch(p.status, st.day), !!p.marketing).map((part) => parts[part]()),
     h("div", { class: "nx-footer-links" }, openLink(ctx, p, "marketing", "Open Marketing Engine →"), openLink(ctx, p, "analytics", "Open Analytics and Gate →")),
   ];
@@ -696,7 +676,6 @@ function dev(ctx: Ctx, p: ProductSnapshot): HTMLElement[] {
 
   return [
     header,
-    questLog(ctx, { id: `dev:${p.name}`, field: "questLog", title: "Developer quests", quests: quests(ctx, p), product: p, lockedFilter: "dev", emptyText: "No developer quests right now." }),
     readiness,
     profileLine(ctx, p),
     h("div", { class: "nx-two" }, mech, changes),

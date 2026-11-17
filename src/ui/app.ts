@@ -11,6 +11,7 @@ import { Host, Undo } from "./host";
 import { countUp, enter, reducedMotion, replayClass, slideIndicator, zoomFrom } from "./motion";
 import { renderProduct } from "./product";
 import { openHelp } from "./help";
+import { fillQuestPanel, fillQuestTab, questBoard } from "./quests";
 import { confirmStartDay1 } from "./sheets";
 
 export type Tab = "overview" | "marketing" | "dev";
@@ -32,7 +33,16 @@ export class Memory {
   /** Last known done/open state per quest, to celebrate a quest the moment it finishes. */
   questDone = new Map<string, boolean>();
   questFilter: "all" | "dev" | "marketing" | null = null;
+  /** Quest log groups someone opened or closed (key "product:<name>" or "company"). */
+  questGroups = new Map<string, boolean>();
+  /** Open quests on the quest log tab at the last render, so the count can pop when it changes. */
+  questCount: number | null = null;
 }
+
+/** Narrower than this, the quest log covers the page (bottom drawer) instead of sitting beside it. Matches styles.css. */
+export const QUEST_DOCK_MIN = 900;
+
+let instances = 0;
 
 export interface ButtonOpts {
   id: string;
@@ -83,23 +93,48 @@ export class DashboardApp {
   private zoom: { rect: DOMRect; to: "product" | "home"; name: string } | null = null;
   private timers: number[] = [];
   private dataListeners = new Set<(data: DashboardData) => void>();
+  /** The quest log: a tab on the right edge, and the panel it opens. Built once; their contents refill each render. */
+  private questTab: HTMLButtonElement;
+  private questPanel: HTMLElement;
+  private questDock: HTMLElement;
+  private questTitleId: string;
+  /** Is the quest log open? Set from this device's prefs on the first render. */
+  questsOpen = false;
+  private questsReady = false;
+  private sheetInert = false;
+  private resize: ResizeObserver | null = null;
 
   constructor(container: HTMLElement, readonly host: Host) {
+    const uid = ++instances;
     this.root = h("div", { class: "nx-root", tabindex: "-1" });
     this.scroller = h("div", { class: "nx-scroller" });
     this.screen = h("div", { class: "nx-screen" });
     this.toasts = h("div", { class: "nx-toasts", role: "status", "aria-live": "polite" });
     this.overlay = h("div", { class: "nx-overlay", hidden: true });
+    this.questTitleId = `nx-qpanel-title-${uid}`;
+    this.questTab = h("button", { class: "nx-qtab nx-pressable", type: "button", "aria-expanded": "false", "aria-controls": `nx-qpanel-${uid}`, "aria-keyshortcuts": "Q" });
+    this.questTab.addEventListener("click", () => this.setQuestsOpen(true, { save: true, focus: true }));
+    const scrim = h("div", { class: "nx-qscrim", "aria-hidden": "true" });
+    scrim.addEventListener("click", () => this.setQuestsOpen(false, { save: true }));
+    this.questPanel = h("section", { class: "nx-qpanel", id: `nx-qpanel-${uid}`, "aria-labelledby": this.questTitleId });
+    this.questDock = h("div", { class: "nx-qdock" }, this.questTab, scrim, this.questPanel);
     this.scroller.append(this.screen);
-    this.root.append(this.scroller, this.toasts, this.overlay);
+    this.root.append(this.scroller, this.questDock, this.toasts, this.overlay);
     container.appendChild(this.root);
     this.root.addEventListener("keydown", (e) => this.onKey(e));
     // Refresh "changed just now" dots and day rollovers.
     this.timers.push(window.setInterval(() => this.data && this.render(), 60_000));
+    // Beside the page or over it depends on the width: keep what's reachable in step when the pane is resized.
+    if (typeof ResizeObserver === "function") {
+      this.resize = new ResizeObserver(() => this.syncQuestDock());
+      this.resize.observe(this.root);
+    }
+    this.syncQuestDock();
   }
 
   destroy(): void {
     this.timers.forEach((t) => clearInterval(t));
+    this.resize?.disconnect();
     this.root.remove();
   }
 
@@ -210,13 +245,28 @@ export class DashboardApp {
     const focusKey = active?.getAttribute("data-fb") ?? active?.getAttribute("data-product") ?? null;
     // When that button is gone (its video was deleted), focus stays in its section, like a closing sheet's focusBack.
     const sectionId = active?.closest<HTMLElement>("[id^='nx-sec-']")?.id ?? null;
+    const inQuests = !!active && this.questPanel.contains(active);
+
+    const board = questBoard(ctx);
+    if (!this.questsReady) {
+      // First render: what this device remembers, else open when there's room beside the page.
+      this.questsReady = true;
+      this.setQuestsOpen(this.host.prefs.questLogOpen ?? !this.questsCoverPage());
+      // Slide only on later opens and closes, never when the dashboard first appears.
+      requestAnimationFrame(() => this.root.classList.add("nx-qready"));
+    }
+    fillQuestTab(ctx, this.questTab, board);
+    fillQuestPanel(ctx, this.questPanel, board, this.questTitleId);
     clear(this.screen);
     this.screen.append(view);
     if (hadFocus && !this.sheetOpen()) {
-      const again = focusKey ? this.screen.querySelector<HTMLElement>(`[data-fb="${CSS.escape(focusKey)}"], [data-product="${CSS.escape(focusKey)}"]`) : null;
+      const find = (sel: string) => this.screen.querySelector<HTMLElement>(sel) ?? this.questPanel.querySelector<HTMLElement>(sel);
+      const again = focusKey ? find(`[data-fb="${CSS.escape(focusKey)}"], [data-product="${CSS.escape(focusKey)}"]`) : null;
       const section = !again && sectionId ? this.screen.querySelector<HTMLElement>(`#${CSS.escape(sectionId)}`) : null;
       if (section && !section.hasAttribute("tabindex")) section.setAttribute("tabindex", "-1");
-      (again ?? section ?? this.root).focus({ preventScroll: true });
+      // A quest that just finished leaves the list: focus stays in the quest log, on its title.
+      const questHome = inQuests && this.questsOpen ? this.questPanel.querySelector<HTMLElement>(".nx-qpanel-title") : null;
+      (again ?? section ?? questHome ?? this.root).focus({ preventScroll: true });
     }
 
     // Square ↔ hub zoom.
@@ -228,6 +278,48 @@ export class DashboardApp {
       if (sq) zoomFrom(sq, z.rect);
     }
     afters.forEach((fn) => fn());
+  }
+
+  // ── Quest log ────────────────────────────────────────────────────────────
+
+  /** True when the quest log covers the page (narrow pane or phone) instead of sitting beside it. */
+  questsCoverPage(): boolean {
+    const w = this.root.clientWidth;
+    return w > 0 && w < QUEST_DOCK_MIN;
+  }
+
+  /**
+   * Opens or closes the quest log. `save` remembers it on this device, so the dashboard reopens the way it was left
+   * (every open and close does; only the first render, which applies what was remembered, doesn't). `focus` moves the
+   * keyboard into the log when it opens. Closing always hands focus back to the tab if it was inside.
+   */
+  setQuestsOpen(open: boolean, opts: { save?: boolean; focus?: boolean } = {}): void {
+    const hadFocus = !!document.activeElement && this.questPanel.contains(document.activeElement);
+    this.questsOpen = open;
+    this.root.classList.toggle("nx-quests-open", open);
+    this.questTab.setAttribute("aria-expanded", String(open));
+    this.syncQuestDock();
+    if (open && opts.focus) this.questPanel.querySelector<HTMLElement>(".nx-qpanel-title")?.focus({ preventScroll: true });
+    if (!open && hadFocus) this.questTab.focus({ preventScroll: true });
+    if (opts.save) {
+      this.host.savePrefs({ questLogOpen: open }).catch((e) => console.error("NXTWAVE Dashboard: couldn't save the quest log setting", e));
+    }
+  }
+
+  /** What Tab and screen readers can reach: an open sheet shuts out everything else; a covering quest log, the page. */
+  private syncQuestDock(): void {
+    const cover = this.questsCoverPage();
+    setInert(this.scroller, this.sheetInert || (this.questsOpen && cover));
+    setInert(this.questDock, this.sheetInert);
+    setInert(this.questPanel, !this.questsOpen);
+    setInert(this.questTab, this.questsOpen);
+    if (this.questsOpen && cover) {
+      this.questPanel.setAttribute("role", "dialog");
+      this.questPanel.setAttribute("aria-modal", "true");
+    } else {
+      this.questPanel.removeAttribute("role");
+      this.questPanel.removeAttribute("aria-modal");
+    }
   }
 
   // ── Top bar ──────────────────────────────────────────────────────────────
@@ -482,13 +574,8 @@ export class DashboardApp {
    * so nothing behind it can open another sheet over typed text. The toasts stay reachable (their Undo).
    */
   setBackgroundInert(on: boolean): void {
-    if (on) {
-      this.scroller.setAttribute("inert", "");
-      this.scroller.setAttribute("aria-hidden", "true");
-    } else {
-      this.scroller.removeAttribute("inert");
-      this.scroller.removeAttribute("aria-hidden");
-    }
+    this.sheetInert = on;
+    this.syncQuestDock();
   }
 
   // ── Keyboard ─────────────────────────────────────────────────────────────
@@ -505,6 +592,18 @@ export class DashboardApp {
     if (target.closest("input, textarea, select, [contenteditable]")) return;
     const data = this.data;
     if (!data) return;
+    if (e.key === "q" || e.key === "Q") {
+      e.preventDefault();
+      this.setQuestsOpen(!this.questsOpen, { save: true, focus: true });
+      return;
+    }
+    // Esc inside the quest log (or while it covers the page) closes it; elsewhere it still goes home.
+    if (e.key === "Escape" && this.questsOpen && (this.questsCoverPage() || this.questPanel.contains(target))) {
+      e.preventDefault();
+      this.setQuestsOpen(false, { save: true });
+      this.questTab.focus({ preventScroll: true });
+      return;
+    }
     const route = this.route;
     if (e.key === "h" || e.key === "Escape") {
       if (route.level !== "home") {
@@ -533,5 +632,15 @@ export class DashboardApp {
 
   activeSprint(): ProductSnapshot | null {
     return this.data ? activeProducts(this.data.products)[0] ?? null : null;
+  }
+}
+
+function setInert(el: HTMLElement, on: boolean): void {
+  if (on) {
+    el.setAttribute("inert", "");
+    el.setAttribute("aria-hidden", "true");
+  } else {
+    el.removeAttribute("inert");
+    el.removeAttribute("aria-hidden");
   }
 }

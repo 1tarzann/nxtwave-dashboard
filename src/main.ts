@@ -34,7 +34,7 @@ class DashboardView extends ItemView {
     this.contentEl.empty();
     this.contentEl.addClass("nx-view-content");
     const s = this.plugin.settings;
-    const prefs = { role: s.role, guideSeen: s.guideSeen };
+    const prefs = { role: s.role, guideSeen: s.guideSeen, questLogOpen: s.questLogOpen };
     const host = new ObsidianHost(
       this.app,
       this.plugin.manifest.version,
@@ -104,11 +104,13 @@ interface Settings {
   motion: MotionMode;
   role: Role;
   guideSeen: boolean;
+  /** The quest log was left open or closed on this device; null until someone opens or closes it. */
+  questLogOpen: boolean | null;
   kitPath: string;
   nodePath: string;
   minGapHours: number;
 }
-const DEFAULTS: Settings = { motion: "system", role: "both", guideSeen: false, kitPath: "~/Developer/social-scrape-kit", nodePath: "", minGapHours: 6 };
+const DEFAULTS: Settings = { motion: "system", role: "both", guideSeen: false, questLogOpen: null, kitPath: "~/Developer/social-scrape-kit", nodePath: "", minGapHours: 6 };
 
 class DashboardSettingTab extends PluginSettingTab {
   constructor(app: App, private plugin: NxtwaveDashboard) {

@@ -1,8 +1,7 @@
-// Level 1 (All Products): the "Do this next" banner, every product as a color-coded square,
-// company quests, the archive and the Idea Vault.
+// Level 1 (All Products): the one-line "Do this next" hint, every product as a color-coded square, the archive and
+// the Idea Vault. Quests live in the quest log on the right edge (src/ui/quests.ts), not on this page.
 
-import { uniqueBusinessItems } from "../data/company";
-import { companyQuests, forRole, Quest, sprintQuests } from "../data/quests";
+import { forRole, OWNER_LABEL, Quest, sprintQuests } from "../data/quests";
 import { fmtMoney, nextActions } from "../data/status";
 import { IdeaNote, ProductSnapshot, SPEND_CAP } from "../data/types";
 import { Ctx } from "./app";
@@ -10,7 +9,7 @@ import { checkIcon, dayProgress, drawer, rel, sectionHead } from "./components";
 import { h } from "./dom";
 import { legendRow, openHelp } from "./help";
 import { leave, reducedMotion, replayClass } from "./motion";
-import { questLog } from "./quests";
+import { revealQuest } from "./quests";
 import { newSprintWizard } from "./sheets";
 
 const ORDER: Record<string, number> = { kill: 0, gate: 1, stale: 2, unstarted: 3, healthy: 4, queued: 5, closed: 6 };
@@ -68,18 +67,6 @@ export function renderHome(ctx: Ctx): HTMLElement {
   }
   root.append(products);
 
-  const business = uniqueBusinessItems(data.businessModel, data.setup);
-  root.append(
-    questLog(ctx, {
-      id: "company",
-      field: "companyQuests",
-      title: "Company quests",
-      quests: companyQuests(data.setup, business),
-      emptyText: data.setup.length ? "No company quests for this filter." : "Couldn't find SETUP_CHECKLIST.md in the HQ folder.",
-      grouped: true,
-    }),
-  );
-
   root.append(archiveDrawer(ctx), ideaVault(ctx));
 
   mem.known = new Set(data.products.map((p) => p.name));
@@ -98,7 +85,7 @@ function guideCard(ctx: Ctx): HTMLElement {
       null,
       h("li", null, h("strong", null, "Squares are products. "), "The color says how it's doing; the line under it says why."),
       h("li", null, h("strong", null, "“Do this next” "), "is the single most urgent thing. Start there."),
-      h("li", null, h("strong", null, "Quests "), "are jobs only a person can do. Each one says who (Dev or Marketing), why, and where."),
+      h("li", null, h("strong", null, "🗒 Quests "), "are jobs only a person can do. They live in the quest log on the right edge (press Q). Each one says who (Dev or Marketing), why, and where."),
       h("li", null, h("strong", null, "ⓘ "), "next to any section explains it. ", h("strong", null, "? Help"), " (top right) has the color key and every word."),
     ),
   );
@@ -115,7 +102,11 @@ function guideCard(ctx: Ctx): HTMLElement {
 
 // ── Do this next ───────────────────────────────────────────────────────────
 
-/** The most urgent status fix; if every square is fine, the most urgent quest for whoever is looking. */
+/**
+ * One line: the most urgent status fix; if every square is fine, the most urgent quest for whoever is looking.
+ * It stays on the page (quests moved to the quest log) because status fixes like a Kill signal or Start Day 1
+ * aren't quests, and one obvious place to start beats scanning. A quest gets "Show in quest log", not its buttons.
+ */
 function doNextBanner(ctx: Ctx): HTMLElement {
   const { mem } = ctx;
   const list = nextActions(ctx.data);
@@ -135,8 +126,8 @@ function doNextBanner(ctx: Ctx): HTMLElement {
   const id = topStatus ? topStatus.id : topQuest ? `quest:${topQuest.p.name}:${topQuest.q.id}` : null;
   const text = topStatus ? `${topStatus.product.displayName} · ${topStatus.status.reason}` : topQuest ? `${topQuest.p.displayName} · ${topQuest.q.title}` : "";
   const tone = topStatus ? `nx-st-${topStatus.status.key}-soft` : topQuest ? (topQuest.q.state === "overdue" ? "nx-st-stale-soft" : "nx-st-unstarted-soft") : "is-clear";
-  const banner = h("div", { class: ["nx-next", tone] });
-  const head = sectionHead(ctx, "doNext", "▶ Do this next");
+  const label = h("span", { class: "nx-next-label", title: "The single most urgent thing across all products" }, "▶ Do this next");
+  const banner = h("div", { class: ["nx-next", "nx-next-line", tone], role: "region", "aria-label": "Do this next" }, label);
 
   const item = (): HTMLElement => {
     if (topStatus) {
@@ -151,14 +142,14 @@ function doNextBanner(ctx: Ctx): HTMLElement {
     }
     if (topQuest) {
       const { q, p } = topQuest;
-      const go = h("button", { class: "nx-btn nx-btn-primary nx-pressable", type: "button" }, "Open quest →");
-      go.addEventListener("click", () => ctx.go({ level: "product", name: p.name, tab: "overview" }));
+      const show = h("button", { class: "nx-btn nx-btn-primary nx-pressable", type: "button", "data-fb": "next:show-quest", title: "Opens the quest log at this quest (Q)" }, "Show in quest log");
+      show.addEventListener("click", () => revealQuest(ctx, `product:${p.name}`, q.id));
       return h(
         "div",
         { class: "nx-next-item" },
-        h("span", { class: ["nx-owner", `own-${q.owner}`] }, q.owner === "dev" ? "FOR DEV" : q.owner === "marketing" ? "FOR MARKETING" : "FOR BOTH"),
+        h("span", { class: ["nx-owner", `own-${q.owner}`] }, OWNER_LABEL[q.owner]),
         h("span", { class: "nx-next-text" }, h("strong", null, p.displayName), ` · ${q.title} · `, h("span", { class: "nx-muted" }, q.when)),
-        go,
+        show,
       );
     }
     const hasActive = ctx.data.products.some(isActive);
@@ -182,7 +173,7 @@ function doNextBanner(ctx: Ctx): HTMLElement {
     banner.append(done);
     window.setTimeout(async () => {
       await leave(done);
-      banner.className = ["nx-next", tone].join(" ");
+      banner.className = ["nx-next", "nx-next-line", tone].join(" ");
       const next = item();
       banner.append(next);
       if (!reducedMotion()) next.animate([{ opacity: 0, transform: "translateX(-16px)" }, { opacity: 1, transform: "none" }], { duration: 220, easing: "cubic-bezier(.2,.8,.2,1)" });
@@ -190,7 +181,7 @@ function doNextBanner(ctx: Ctx): HTMLElement {
   } else {
     banner.append(item());
   }
-  return h("div", { class: "nx-next-wrap" }, head, banner);
+  return h("div", { class: "nx-next-wrap" }, banner);
 }
 
 // ── Squares ────────────────────────────────────────────────────────────────

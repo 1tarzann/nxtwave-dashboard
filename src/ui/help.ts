@@ -34,10 +34,11 @@ export function openHelp(ctx: Ctx): void {
     h(
       "dl",
       { class: "nx-help-list" },
-      h("div", null, h("dt", null, "🏠 All Products"), h("dd", null, "Every product as a square, the single next thing to do, and company quests.")),
-      h("div", null, h("dt", null, "📊 Overview"), h("dd", null, "One product: its quests, latest activity, money, timeline and linked accounts.")),
+      h("div", null, h("dt", null, "🏠 All Products"), h("dd", null, "Every product as a square and the single next thing to do.")),
+      h("div", null, h("dt", null, "📊 Overview"), h("dd", null, "One product: latest activity, money, timeline and linked accounts.")),
       h("div", null, h("dt", null, "📈 Marketing side"), h("dd", null, "What the Marketer owns: competitor examples, video lines, content, daily numbers.")),
       h("div", null, h("dt", null, "💻 Developer side"), h("dd", null, "What the Developer owns: the 3 core features, progress log, launch readiness.")),
+      h("div", null, h("dt", null, "🗒 Quest log"), h("dd", null, "The tab on the right edge (on a phone, the round button at the bottom). Every quest, by product, then by who does it.")),
     ),
 
     h("h4", { class: "nx-help-h" }, "3 · Quests"),
@@ -51,7 +52,10 @@ export function openHelp(ctx: Ctx): void {
       h("strong", null, "why"),
       ", and ",
       h("strong", null, "where"),
-      ". It checks itself off when the work shows up in your notes.",
+      ". It checks itself off when the work shows up in your notes. ",
+      "They all live in the ",
+      h("strong", null, "🗒 quest log"),
+      " on the right edge: press it (or Q) to open or close it. Tap a quest's name to see why it matters and where it's done. This computer remembers whether you left it open.",
     ),
 
     h("h4", { class: "nx-help-h" }, "4 · Where each number comes from"),
@@ -74,6 +78,7 @@ export function openHelp(ctx: Ctx): void {
       h("div", null, h("dt", null, "H or Esc"), h("dd", null, "Back to All Products")),
       h("div", null, h("dt", null, "1 · 2 · 3"), h("dd", null, "Overview · Marketing side · Developer side")),
       h("div", null, h("dt", null, "[ and ]"), h("dd", null, "Previous / next product")),
+      h("div", null, h("dt", null, "Q"), h("dd", null, "Open or close the quest log (Esc closes it too)")),
     ),
     h("p", { class: "nx-muted" }, `Dashboard version ${ctx.host.version}. Every ⓘ next to a section explains that section.`),
   ]);

@@ -9,14 +9,23 @@ An Obsidian plugin for a 2-partner sprint vault: color-coded product squares, a 
 4. Settings → Community plugins → enable **NXTWAVE Dashboard**. Open it from the ribbon icon or Cmd/Ctrl+P → "NXTWAVE Dashboard: Open dashboard".
 
 ## What it shows
-- **Home:** every product as a square. Color + icon + word: ✕ KILL SIGNAL (maroon), ⚑ GATE TODAY (amber), ⏸ STALE (pink-red), ✓ HEALTHY (emerald), grey for queued / clock not started. A "Do this next" banner names the single most urgent fix.
+- **Home:** every product as a square. Color + icon + word: ✕ KILL SIGNAL (maroon), ⚑ GATE TODAY (amber), ⏸ STALE (pink-red), ✓ HEALTHY (emerald), grey for queued / clock not started. A one-line "Do this next" names the single most urgent fix.
 - **Product hub:** status banner with its fix button, last post / last dev update, spend · views · clicks · revenue, the 28-day timeline, connection pills, social stats, and doors to the Marketing and Dev sides.
 - **Buttons that write:** Start Day 1, Posted today, Connect handle / repo, New Sprint wizard. Each edits only the frontmatter lines it names and offers Undo for 5 seconds.
 
 ## Quests
 Jobs only a person can do (logins, filming, payments, signatures, votes), each tagged **FOR DEV**, **FOR MARKETING** or **FOR BOTH**, with why it matters, why Claude can't do it, and where to do it.
-- **Home:** open items from `SETUP_CHECKLIST.md` (grouped P0–P3) plus Business Model §8 items the checklist doesn't cover. Add `#dev` or `#marketing` to a checklist line to assign it. **Mark done** ticks the line (with Undo).
+
+**The quest log.** All quests live in one quest log on the right edge of the dashboard, like a game's quest tracker. The pages themselves show only products and their parts.
+- **Closed:** a small 🗒 tab on the right edge with the number of open quests and how many are overdue. On a phone it's a round button at the bottom right.
+- **Open:** quests grouped by product (the one you're looking at comes first), then **For Dev**, **For Marketing** and **For Both**. Each quest shows when it's due, its progress and its button (**Go to Videos**, **Copy command**, **Mark done**…). Tap a quest's name to see why it matters and where it's done. **Coming up** and **Done** fold away under each product.
+- Open or close it with the tab, the ✕, or **Q**. **Esc** closes it. Each computer remembers whether it was left open.
+- On a narrow window or a phone it slides up from the bottom over the page instead of sitting beside it.
+- **Do this next** stays as one line at the top of Home: the single most urgent thing. A status fix (like Start Day 1) keeps its fix button; a quest gets **Show in quest log**, which opens the log at that quest.
+
+**Where quests come from**
 - **Each product:** sprint quests from the 28-day plan (accounts, videos, checkout, break-it test, test purchase, publish, sign-offs, first $100, daily post and numbers, votes). They check themselves off when the work shows up in the notes.
+- **Company:** open items from `SETUP_CHECKLIST.md` plus Business Model §8 items the checklist doesn't cover. Add `#dev` or `#marketing` to a checklist line to assign it. **Mark done** ticks the line (with Undo).
 - Settings → **Who uses this device?** sets which quests show first.
 
 ## Marketing editor (0.5.0)

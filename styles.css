@@ -993,3 +993,189 @@ body .nx-root .nx-prof-item > .nx-ed-open { grid-column: 2; grid-row: 1 / span 2
 body.nx-reduce-motion .nx-root .nx-vstep-pop .nx-vstep-bar::after, body.nx-reduce-motion .nx-root .nx-vstep.is-busy .nx-vstep-bar::after { animation: none !important; }
 body.nx-reduce-motion .nx-root .nx-vstep-bar::after, body.nx-reduce-motion .nx-root button.nx-vstep { transition: none !important; }
 body.nx-reduce-motion .nx-root .nx-vstep.is-busy .nx-vstep-bar::after { opacity: 0.45; }
+
+/* ── 0.6: the quest log, docked to the right edge (src/ui/quests.ts) ─────────
+   900 px and wider: a tab on the edge; open, a panel beside the page (the page narrows, nothing is covered).
+   Narrower (phone, split pane): a round button at the bottom right; open, a drawer from the bottom over a dimmed page.
+   QUEST_DOCK_MIN in src/ui/app.ts matches the 900 px here. It slides only after the first render (.nx-qready), so it
+   never animates in when the dashboard opens; Reduced motion turns every slide into an instant change (rule above). */
+body .nx-root { --nx-qw: 360px; --nx-qgutter: 52px; --nx-qslide: 260ms; }
+body .nx-root .nx-scroller { margin-right: var(--nx-qgutter); }
+body .nx-root.nx-quests-open .nx-scroller { margin-right: var(--nx-qw); }
+body .nx-root.nx-qready .nx-scroller { transition: margin-right var(--nx-qslide) var(--nx-ease); }
+body .nx-root.nx-quests-open .nx-toasts { right: calc(var(--nx-qw) + 16px); }
+
+/* The tab: the closed quest log. */
+body .nx-root .nx-qtab {
+  position: absolute;
+  top: 120px;
+  right: 0;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 44px;
+  height: auto;
+  min-height: 44px;
+  padding: 12px 0;
+  border: 1px solid var(--nx-border);
+  border-right: none;
+  border-radius: 12px 0 0 12px;
+  background: var(--nx-surface-2);
+  color: var(--nx-text);
+  box-shadow: var(--nx-shadow);
+  font: inherit;
+  cursor: pointer;
+}
+body .nx-root .nx-qtab:hover { transform: translateX(-3px); background: var(--nx-surface); }
+body .nx-root.nx-quests-open .nx-qtab { visibility: hidden; transform: translateX(100%); }
+body .nx-root.nx-qready .nx-qtab { transition: transform var(--nx-qslide) var(--nx-ease), background-color var(--nx-fast) var(--nx-ease), visibility 0s; }
+body .nx-root.nx-qready.nx-quests-open .nx-qtab { transition: transform var(--nx-qslide) var(--nx-ease), visibility 0s linear var(--nx-qslide); }
+body .nx-root .nx-qtab-icon { font-size: 1.15em; line-height: 1; }
+body .nx-root .nx-qtab-label { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 0.72em; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+body .nx-root .nx-qtab-count { display: grid; place-items: center; box-sizing: border-box; min-width: 26px; height: 26px; padding: 0 6px; border-radius: 999px; background: var(--nx-text); color: var(--nx-surface); font-size: 0.82em; font-weight: 800; }
+body .nx-root .nx-qtab-count.is-zero { background: var(--nx-healthy); color: var(--nx-healthy-ink); }
+body .nx-root .nx-qtab-late { display: grid; place-items: center; min-width: 26px; padding: 2px 4px; border-radius: 999px; background: var(--nx-stale); color: var(--nx-stale-ink); font-size: 0.7em; font-weight: 800; white-space: nowrap; }
+body .nx-root .nx-bump { animation: nx-bump 450ms var(--nx-ease); }
+@keyframes nx-bump { 40% { transform: scale(1.35); } }
+
+/* The panel: the open quest log. */
+body .nx-root .nx-qscrim { display: none; }
+body .nx-root .nx-qpanel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  width: var(--nx-qw);
+  max-width: 100%;
+  box-sizing: border-box;
+  background: var(--nx-surface);
+  border-left: 1px solid var(--nx-border);
+  transform: translateX(100%);
+  visibility: hidden;
+}
+body .nx-root.nx-quests-open .nx-qpanel { transform: none; visibility: visible; box-shadow: -8px 0 24px rgba(0, 0, 0, 0.06); }
+body .nx-root.nx-qready .nx-qpanel { transition: transform var(--nx-qslide) var(--nx-ease), visibility 0s linear var(--nx-qslide); }
+body .nx-root.nx-qready.nx-quests-open .nx-qpanel { transition: transform var(--nx-qslide) var(--nx-ease), visibility 0s; }
+body .nx-root .nx-qpanel-head { flex: none; padding: 8px 12px 10px 16px; border-bottom: 1px solid var(--nx-border); }
+body .nx-root .nx-qpanel-grab { display: none; }
+body .nx-root .nx-qpanel-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+body .nx-root .nx-qpanel-title { margin: 0; font-size: 1.05em; font-weight: 800; white-space: nowrap; }
+body .nx-root .nx-qpanel-sum { flex: 1; font-size: 0.85em; color: var(--nx-muted); }
+body .nx-root .nx-qpanel-late { color: var(--nx-text); }
+body .nx-root .nx-qpanel-close { flex: none; width: 44px; height: 44px; padding: 0; border: none; border-radius: 10px; background: none; box-shadow: none; color: var(--nx-muted); font: inherit; font-size: 1.1em; cursor: pointer; }
+body .nx-root .nx-qpanel-close:hover { background: var(--nx-surface-2); color: var(--nx-text); transform: none; box-shadow: none; }
+body .nx-root .nx-qfilter { margin: 0; flex-wrap: nowrap; }
+body .nx-root .nx-qfilter .nx-filter-chip { flex: 1 1 auto; min-height: 44px; padding: 0 10px; white-space: nowrap; }
+body .nx-root .nx-qpanel-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px 12px 24px 16px; }
+body .nx-root .nx-qpanel-foot { margin: 16px 4px 0; font-size: 0.78em; color: var(--nx-muted); }
+
+/* One group per product (and Company): a 48 px header that folds it. */
+body .nx-root .nx-qgroup { border-bottom: 1px solid var(--nx-border); }
+body .nx-root .nx-qgroup-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  width: 100%;
+  min-height: 48px;
+  height: auto;
+  padding: 8px 4px;
+  border: none;
+  background: none;
+  box-shadow: none;
+  color: var(--nx-text);
+  font: inherit;
+  text-align: left;
+  white-space: normal;
+  cursor: pointer;
+}
+body .nx-root .nx-qgroup-name { font-weight: 800; }
+body .nx-root .nx-qgroup-meta { margin-left: auto; font-size: 0.82em; color: var(--nx-muted); }
+body .nx-root .nx-qgroup-late { color: var(--nx-text); }
+body .nx-root .nx-qgroup.is-open > .nx-qgroup-toggle .nx-chevron { transform: rotate(90deg); }
+body .nx-root .nx-qgroup-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--nx-base) var(--nx-ease); }
+body .nx-root .nx-qgroup.is-open > .nx-qgroup-body { grid-template-rows: 1fr; }
+body .nx-root .nx-qgroup-inner { min-height: 0; overflow: hidden; }
+body .nx-root .nx-qgroup.is-open .nx-qgroup-inner { padding-bottom: 12px; }
+body .nx-root .nx-qgroup-prog { display: flex; align-items: center; gap: 8px; margin: 0 4px 4px; font-size: 0.8em; }
+body .nx-root .nx-qgroup-prog .nx-mini { flex: 1; }
+body .nx-root .nx-qempty { margin: 6px 4px 8px; font-size: 0.88em; color: var(--nx-muted); }
+
+/* Who does it: For Dev / For Marketing / For Both, with the owner color as a dot. */
+body .nx-root .nx-qowner { display: flex; align-items: center; gap: 6px; margin: 12px 4px 6px; font-size: 0.72em; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--nx-muted); }
+body .nx-root .nx-qowner::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--nx-faint); }
+body .nx-root .nx-qowner.own-dev::before { background: var(--nx-dev); }
+body .nx-root .nx-qowner.own-marketing::before { background: var(--nx-mkt); }
+body .nx-root .nx-qowner-n { padding: 0 6px; border-radius: 999px; background: rgba(127, 127, 127, 0.18); color: var(--nx-text); letter-spacing: 0; }
+
+/* One quest: the name (tap for why and where), when it's due, progress, then its buttons. */
+body .nx-root .nx-qlist { display: flex; flex-direction: column; gap: 8px; }
+body .nx-root .nx-qcard { gap: 2px; padding: 2px 10px 10px; border-radius: 10px; border-left-width: 4px; }
+body .nx-root .nx-qcard-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 6px;
+  width: calc(100% + 12px);
+  min-height: 44px;
+  height: auto;
+  margin: 0 -6px;
+  padding: 10px 6px 4px;
+  border: none;
+  background: none;
+  box-shadow: none;
+  color: var(--nx-text);
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  white-space: normal;
+  cursor: pointer;
+}
+body .nx-root .nx-qcard-title.is-static { min-height: 0; padding: 8px 0 2px 20px; font-size: 1em; cursor: default; }
+body .nx-root .nx-qcard > .nx-qcard-title > .nx-chevron { flex: none; width: 14px; color: var(--nx-muted); font-size: 1.15em; line-height: 1.1; transform: none; }
+body .nx-root .nx-qcard.is-expanded > .nx-qcard-title > .nx-chevron { transform: rotate(90deg); }
+body .nx-root .nx-qcard-meta, body .nx-root .nx-qcard-details, body .nx-root .nx-qcard .nx-quest-prog { padding-left: 20px; }
+body .nx-root .nx-qcard-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+body .nx-root .nx-qcard .nx-quest-when { margin-left: 0; }
+body .nx-root .nx-qcard-details { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 2px; font-size: 0.9em; }
+body .nx-root .nx-qcard-details[hidden] { display: none; }
+body .nx-root .nx-qcard .nx-quest-actions { gap: 6px; margin-top: 6px; }
+body .nx-root .nx-qpanel .nx-btn { min-height: 44px; padding: 6px 12px; font-size: 0.9em; white-space: normal; text-align: center; }
+body .nx-root .nx-qpanel .nx-btn-wrap { max-width: 100%; }
+body .nx-root .nx-qpanel .nx-drawer { margin-top: 10px; background: transparent; }
+body .nx-root .nx-qpanel .nx-drawer-toggle { min-height: 44px; padding: 8px 10px; font-size: 0.9em; }
+body .nx-root .nx-qpanel .nx-drawer-inner { padding: 0 8px; }
+
+/* Hover: a light tint. These outrank Obsidian's button:not(.clickable-icon):hover grey. */
+body .nx-root .nx-qgroup-toggle:hover, body .nx-root .nx-qcard-title:not(.is-static):hover, body .nx-root .nx-qpanel .nx-drawer-toggle:hover { background: rgba(127, 127, 127, 0.1); box-shadow: none; }
+body .nx-root .nx-qgroup-toggle, body .nx-root .nx-qcard-title { border-radius: 8px; }
+body .nx-root .nx-qfilter .nx-filter-chip:hover { background: rgba(127, 127, 127, 0.12); color: var(--nx-text); box-shadow: none; }
+body .nx-root .nx-qfilter .nx-filter-chip.is-on:hover { background: var(--nx-text); color: var(--nx-surface); }
+
+/* “Do this next”: one line on Home. */
+body .nx-root .nx-next-line { gap: 6px 12px; flex-wrap: wrap; margin-bottom: 4px; }
+body .nx-root .nx-next-line .nx-next-label { flex: none; }
+body .nx-root .nx-next-line .nx-next-item { flex: 1 1 280px; width: auto; }
+
+@container (max-width: 899px) {
+  body .nx-root .nx-scroller, body .nx-root.nx-quests-open .nx-scroller { margin-right: 0; }
+  body .nx-root .nx-toasts, body .nx-root.nx-quests-open .nx-toasts { right: 16px; bottom: 88px; }
+  body .nx-root .nx-qtab { top: auto; bottom: 16px; right: 16px; flex-direction: row; gap: 8px; width: auto; height: 56px; padding: 0 16px 0 14px; border: 1px solid var(--nx-border); border-radius: 28px; }
+  body .nx-root .nx-qtab:hover { transform: translateY(-2px); }
+  body .nx-root.nx-quests-open .nx-qtab { transform: translateY(24px); }
+  body .nx-root .nx-qtab-label { writing-mode: horizontal-tb; transform: none; }
+  body .nx-root .nx-qscrim { display: block; position: absolute; inset: 0; z-index: 14; background: rgba(0, 0, 0, 0.35); opacity: 0; visibility: hidden; }
+  body .nx-root.nx-quests-open .nx-qscrim { opacity: 1; visibility: visible; }
+  body .nx-root.nx-qready .nx-qscrim { transition: opacity var(--nx-qslide) var(--nx-ease), visibility 0s linear var(--nx-qslide); }
+  body .nx-root.nx-qready.nx-quests-open .nx-qscrim { transition: opacity var(--nx-qslide) var(--nx-ease), visibility 0s; }
+  body .nx-root .nx-qpanel { top: auto; left: 0; width: auto; max-height: 85%; z-index: 15; border-left: none; border-top: 1px solid var(--nx-border); border-radius: 16px 16px 0 0; transform: translateY(100%); }
+  body .nx-root.nx-quests-open .nx-qpanel { transform: none; box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.25); }
+  body .nx-root .nx-qpanel-grab { display: block; width: 40px; height: 4px; margin: 0 auto 4px; border-radius: 2px; background: var(--nx-border); }
+  body .nx-root .nx-qpanel-body { padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
+}
