@@ -687,7 +687,8 @@ describe("round trips over every sample table", () => {
       }
     }
     expect(checked).toBeGreaterThan(3000);
-  });
+    // 3000+ round trips: about 2 s on a Mac, but 3–6 s on a busy GitHub runner, past vitest's 5 s default.
+  }, 30_000);
   it("delete, restore and insert: the inverse gives back the note byte for byte", () => {
     for (const [name, base] of Object.entries(ALL)) {
       for (const [variant, note] of Object.entries(variants(base))) {
